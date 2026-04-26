@@ -2,15 +2,16 @@
 
 ## Current Objective
 
-- **Goal:** Codex CLI 生产接入（文档 + harness）
-- **Status:** **feat-codex-001 手动配置进行中**（管理后台）；C1–C4 验收待完成
+- **Goal:** Codex Plus `gpt-image-2` 标准 Images API 接入
+- **Status:** **feat-codex-007 代码完成**；等待部署环境做生成/编辑 E2E
 - **Epic:** feat-codex-epic
 
 ## 下次会话：从这里开始
 
-1. 打开 **`docs/installation/codex-relay-production.md` §9**
-2. 准备 Plus OAuth JSON + 测试 `sk-`
-3. 按 Step 1 → 6 执行，同步更新 `feature_list.json`
+1. 部署包含 `feat-codex-007` 的构建
+2. 在 Codex Plus 渠道启用 `gpt-image-2`，并配置模型倍率/分组
+3. 用测试 `sk-` 验证 `/v1/images/generations` 与 `/v1/images/edits`
+4. 将线上请求日志和结果补充到 `feature_list.json`
 
 ## 文档地图
 

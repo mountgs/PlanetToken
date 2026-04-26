@@ -175,6 +175,24 @@
         ],
         "acceptance": "docs/installation/codex-relay-production.md §6 清单已执行一次"
       }
+    },
+    {
+      "id": "feat-codex-007",
+      "name": "Codex Plus gpt-image-2 图片接口",
+      "description": "将标准 /v1/images/generations 与 /v1/images/edits 转换为 Codex Responses image_generation 工具调用",
+      "dependencies": ["feat-codex-001"],
+      "status": "done",
+      "evidence": "2026-07-30: 移植 QuantumNous/new-api 0bc23d4 并适配当前 main；Codex 与 relay constant 定向测试通过",
+      "verification": {
+        "automated": [
+          "go test ./relay/channel/codex ./relay/constant",
+          "go test ./...（除既有根包 embed 产物缺失和 service 全量状态污染外，其余包通过）"
+        ],
+        "manual": [
+          "部署后用 Codex Plus 渠道分别调用 /v1/images/generations 与 /v1/images/edits"
+        ],
+        "acceptance": "gpt-image-2 被识别为图片模型；Codex Images 请求转为 Responses image_generation；SSE 结果聚合为 OpenAI Images response"
+      }
     }
   ]
 }

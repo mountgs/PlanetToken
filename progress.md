@@ -2,14 +2,16 @@
 
 ## Current State
 
-**Last Updated:** 2026-07-10  
+**Last Updated:** 2026-07-30
 **Active Epic:** feat-codex-epic — Codex CLI 生产商用接入  
-**Phase:** **feat-codex-002 → feat-codex-004**（定价已完成，继续策略/令牌/E2E）  
+**Phase:** **feat-codex-007 代码移植完成；继续 feat-codex-004 E2E**
 **Commercial models:** `gpt-5.4`、`gpt-5.5`（仅对外售卖此二档）  
 **Server:** `{SERVER_HOST}`（具体主机勿再写入公开仓库；本地私密记录维护）
 
 ## Completed
 
+- [x] 移植 `0bc23d4`：Codex Plus 渠道支持 `gpt-image-2` 生成/编辑，并暴露标准 Images API
+- [x] `go test ./relay/channel/codex ./relay/constant` PASS
 - [x] Codex 渠道创建，OAuth 可用
 - [x] 渠道测试：`gpt-5.4`、`gpt-5.5` 请求通过
 - [x] **模型定价**：`gpt-5.4`、`gpt-5.5` 已在「分组与模型定价」配置
@@ -59,6 +61,8 @@ export RELAY_TOKEN=sk-你的令牌
 
 ## Known Issues
 
+- 当前 Windows 环境无法启动 WSL，`./init.sh` 报 `CreateInstance/E_ACCESSDENIED`
+- `go test ./...` 的根包缺少 `web/classic/dist` 构建产物；`service` 渠道亲和缓存用例仅在全量运行时受共享状态影响，单独复跑 PASS
 - `/openai/*` 路径线上可能未生效（返回 SPA HTML）；Codex CLI 暂用 `{BASE}/v1`
 - 发版含 `router/relay-router.go` OpenAI 别名后，可改 `base_url = .../openai`
 
@@ -69,4 +73,3 @@ export RELAY_TOKEN=sk-你的令牌
 ## Migration Note
 
 **2026-07-15:** 生产配置/文档/脚本/harness 资产已从 `/home/mountgs/new-api` 迁移到 `/home/mountgs/PlanetToken`（fork `mountgs/PlanetToken`）。应用层 Codex 代码补丁未自动迁移（需对照最新 upstream 再合）。
-
