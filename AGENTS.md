@@ -6,6 +6,58 @@ DO NOT send optional commentary
 
 This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, etc.) behind a unified API, with user management, billing, rate limiting, and an admin dashboard.
 
+## Agent Harness
+
+### Startup Workflow
+
+Before writing code:
+
+1. **Confirm working directory** with `pwd`
+2. **Read this file** and `web/default/AGENTS.md` when touching frontend code
+3. **Run `./init.sh`** to verify the environment is healthy
+4. **Read `feature_list.json`** for current feature state and dependencies
+5. **Read `progress.md`** for session continuity
+6. **Review recent commits** with `git log --oneline -5`
+
+If baseline verification is failing, repair that first before adding new scope.
+
+### Working Rules
+
+- **One feature at a time**: Pick exactly one unfinished feature from `feature_list.json`
+- **Stay in scope**: Do not modify files unrelated to the current feature
+- **Verification required**: Do not claim done without running `./init.sh` or the documented checks below
+- **Update artifacts**: Before ending a session, update `progress.md` and `feature_list.json`
+
+### Definition of Done
+
+A feature is done only when ALL of the following are true:
+
+- [ ] Target behavior is implemented
+- [ ] Required verification actually ran (`go test ./...`, frontend `typecheck` when applicable)
+- [ ] Verification evidence recorded in `feature_list.json` or `progress.md`
+- [ ] Repository remains restartable from `./init.sh`
+
+### End of Session
+
+Before ending a session:
+
+1. Update `progress.md` with current state, blockers, and files changed
+2. Update `feature_list.json` status and evidence for completed features
+3. Fill `session-handoff.md` for multi-session work
+4. Leave the repo in a clean, restartable state
+
+### Verification Commands
+
+```bash
+# Full verification (recommended)
+./init.sh
+```
+
+Required checks:
+
+- `go test ./...` — backend unit and integration tests
+- `cd web/default && bun run typecheck` — default frontend type check (when TS/TSX changed)
+
 ## Tech Stack
 
 - **Backend**: Go 1.22+, Gin web framework, GORM v2 ORM

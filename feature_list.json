@@ -1,0 +1,180 @@
+{
+  "harness_version": "1.1",
+  "active_epic": "feat-codex-epic",
+  "features": [
+    {
+      "id": "feat-prod-pack",
+      "name": "生产部署资产包",
+      "description": "compose、脚本、production/operations 文档",
+      "dependencies": [],
+      "status": "done",
+      "evidence": "deploy-bundle.tar.gz, scripts/bootstrap-on-server.sh"
+    },
+    {
+      "id": "feat-config-git",
+      "name": "配置与文档独立仓库",
+      "description": "部署配置、脚本、文档推送到 mountgs/NewapiConfig",
+      "dependencies": ["feat-prod-pack"],
+      "status": "done",
+      "evidence": "git@github.com:mountgs/NewapiConfig.git main 776c53b"
+    },
+    {
+      "id": "feat-live-001",
+      "name": "服务器连通与环境检查",
+      "description": "SSH 连通与环境检查（主机/端口见私密运维记录）",
+      "dependencies": ["feat-prod-pack"],
+      "status": "done",
+      "evidence": "ping/SSH 通（细节不入库）；curl 127.0.0.1:3000/api/status success:true"
+    },
+    {
+      "id": "feat-relay-docs-001",
+      "name": "中转站客户端接入文档",
+      "description": "Claude Code/Codex/CC Switch/Cursor 接入；HTTPS 与端口安全说明",
+      "dependencies": ["feat-live-001"],
+      "status": "done",
+      "evidence": "docs/installation/relay-client-integration.md; curl {SERVER_HOST}/api/status success:true"
+    },
+    {
+      "id": "feat-live-002",
+      "name": "按文档完成 Docker 部署",
+      "description": "bootstrap-on-server.sh 或 deploy-prod.sh",
+      "dependencies": ["feat-live-001"],
+      "status": "not-started",
+      "evidence": ""
+    },
+    {
+      "id": "feat-live-003",
+      "name": "nginx HTTPS 与可访问性",
+      "description": "宝塔反代 + SSL（需域名），verify-deployment.sh --url",
+      "dependencies": ["feat-live-002"],
+      "status": "not-started",
+      "evidence": ""
+    },
+    {
+      "id": "feat-live-004",
+      "name": "运维操作文档",
+      "description": "operations.md + server-go-live.md",
+      "dependencies": ["feat-prod-pack"],
+      "status": "done",
+      "evidence": "docs/installation/operations.md, docs/installation/server-go-live.md"
+    },
+    {
+      "id": "feat-live-005",
+      "name": "备份演练",
+      "description": "backup-db.sh 成功",
+      "dependencies": ["feat-live-003"],
+      "status": "not-started",
+      "evidence": ""
+    },
+    {
+      "id": "feat-codex-001",
+      "name": "Codex Plus 渠道配置",
+      "description": "创建 ChatGPT Subscription (Codex) 渠道，导入 OAuth JSON，配置模型/分组/权重",
+      "dependencies": ["feat-live-001"],
+      "status": "done",
+      "evidence": "2026-07-10: Codex 渠道已建；gpt-5.4/gpt-5.5 渠道测试通过（用户确认）",
+      "verification": {
+        "automated": [],
+        "manual": [
+          "C1 管理后台渠道测试成功（/v1/responses 流式）",
+          "C2 刷新凭证成功，expires_at 更新",
+          "C3 Codex 账户和用量 API 返回 200",
+          "C4 OAuth JSON 含 access_token、account_id、refresh_token"
+        ],
+        "acceptance": "至少 1 个启用的 Codex 渠道，且 C1–C4 全部通过"
+      }
+    },
+    {
+      "id": "feat-codex-002",
+      "name": "Codex 系统策略",
+      "description": "渠道亲和 codex cli trace、模型倍率、分组映射；chat→responses 保持关闭",
+      "dependencies": ["feat-codex-001"],
+      "status": "done",
+      "evidence": "2026-07-10: gpt-5.4/5.5 + compact 四模型倍率已配置；模型列表含 gpt-5.4/5.5 及 compact 变体",
+      "verification": {
+        "automated": [],
+        "manual": [
+          "S1 渠道亲和已开启，存在 codex cli trace 规则",
+          "S2 gpt-5.4、gpt-5.5、*-openai-compact 倍率已配置；自用模式关闭",
+          "S3 用户令牌分组与渠道分组一致",
+          "S4 global.chat_completions_to_responses_policy.enabled = false",
+          "S5 渠道仅勾选 gpt-5.4/5.5 及 compact 四 ID"
+        ],
+        "acceptance": "S1–S4 全部确认"
+      }
+    },
+    {
+      "id": "feat-codex-003",
+      "name": "Codex 用户令牌",
+      "description": "创建测试用户与 sk- 令牌，绑定分组并设置额度",
+      "dependencies": ["feat-codex-002"],
+      "status": "done",
+      "evidence": "2026-07-10: sk- 令牌 auth+relay 验收通过（/v1/models 200，含 gpt-5.4/5.5/compact）",
+      "verification": {
+        "automated": [
+          "./scripts/verify-codex-relay.sh --url $RELAY_URL --token $RELAY_TOKEN --phase auth",
+          "./scripts/verify-codex-relay.sh --url $RELAY_URL --token $RELAY_TOKEN --model $RELAY_MODEL --phase relay"
+        ],
+        "manual": [
+          "U1 测试用户可登录",
+          "U2 令牌 sk- 已创建且未过期",
+          "U3 剩余额度 > 0"
+        ],
+        "acceptance": "automated auth+relay PASS，U1–U3 确认"
+      }
+    },
+    {
+      "id": "feat-codex-004",
+      "name": "Codex Relay E2E 自动化校验",
+      "description": "verify-codex-relay.sh 全阶段 PASS：/v1/responses 同步+流式",
+      "dependencies": ["feat-codex-003"],
+      "status": "in-progress",
+      "evidence": "2026-07-10: gpt-5.4/5.5 stream:true E2E PASS；stream:false 上游要求 streaming；verify 脚本 sync 用例需更新",
+      "verification": {
+        "automated": [
+          "./scripts/verify-codex-relay.sh --url $RELAY_URL --token $RELAY_TOKEN --model $RELAY_MODEL --phase all"
+        ],
+        "manual": [],
+        "acceptance": "infra + auth + relay + codex 四阶段全部 [PASS]"
+      }
+    },
+    {
+      "id": "feat-codex-005",
+      "name": "Codex CLI 客户端验收",
+      "description": "终端 Codex CLI + config.toml/auth.json 或 CC Switch 导入，人工对话验收",
+      "dependencies": ["feat-codex-004"],
+      "status": "not-started",
+      "evidence": "",
+      "verification": {
+        "automated": [],
+        "manual": [
+          "CL1 重启终端后配置生效",
+          "CL2 codex 简单对话有回复",
+          "CL3 流式输出正常",
+          "CL4 管理端日志可见成功请求",
+          "CL5 CC Switch 导入（可选）"
+        ],
+        "acceptance": "至少 1 台客户端 CL1–CL4 通过"
+      }
+    },
+    {
+      "id": "feat-codex-006",
+      "name": "Codex 运维监控基线",
+      "description": "OAuth 刷新监控、Plus 用量巡检、备份策略文档化",
+      "dependencies": ["feat-codex-004"],
+      "status": "not-started",
+      "evidence": "",
+      "verification": {
+        "automated": [
+          "./scripts/verify-deployment.sh"
+        ],
+        "manual": [
+          "M1 确认 codex credential auto-refresh 任务无连续失败",
+          "M2 每日查看 Codex 用量 5h/weekly",
+          "M5 backup-db.sh 演练成功"
+        ],
+        "acceptance": "docs/installation/codex-relay-production.md §6 清单已执行一次"
+      }
+    }
+  ]
+}

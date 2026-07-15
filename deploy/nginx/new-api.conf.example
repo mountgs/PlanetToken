@@ -1,0 +1,64 @@
+# nginx reverse proxy for New API (Baota Panel or manual install)
+#
+# Install:
+#   1. Baota: Website → Add site → your domain → SSL (Let's Encrypt)
+#   2. Site settings → Config file → merge relevant blocks below
+#   3. nginx -t && nginx -s reload
+#
+# Prerequisites:
+#   - docker-compose.prod.yml running (app on 127.0.0.1:3000)
+#   - Valid TLS certificate for your domain
+
+upstream new_api_backend {
+    server 127.0.0.1:3000;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name api.example.com;
+
+    # Redirect HTTP to HTTPS (Baota SSL plugin usually handles this)
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name api.example.com;
+
+    # Baota-managed paths (adjust if your panel uses different locations):
+    # ssl_certificate     /www/server/panel/vhost/cert/api.example.com/fullchain.pem;
+    # ssl_certificate_key /www/server/panel/vhost/cert/api.example.com/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+
+    client_max_body_size 64m;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    access_log /www/wwwlogs/new-api.access.log;
+    error_log  /www/wwwlogs/new-api.error.log;
+
+    location / {
+        proxy_pass http://new_api_backend;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+
+        # Streaming / SSE (required for chat completions)
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+    }
+}

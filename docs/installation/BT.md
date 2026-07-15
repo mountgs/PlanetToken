@@ -2,6 +2,8 @@
 
 本文档提供使用宝塔面板 Docker 功能部署 New API 的图文教程。
 
+> **生产环境（PostgreSQL + nginx + 备份回滚）** 请参阅 **[生产部署指南](./production.md)**。
+
 > 📖 官方文档：[宝塔面板部署](https://docs.newapi.pro/zh/docs/installation/deployment-methods/bt-docker-installation)
 
 ***
@@ -136,6 +138,8 @@ docker-compose down && docker-compose up -d
 
 ## 相关链接
 
+- [生产部署指南（PostgreSQL + nginx）](./production.md)
+- [日常运维操作手册](./operations.md)
 - [官方文档](https://docs.newapi.pro/zh/docs/installation)
 - [环境变量配置](https://docs.newapi.pro/zh/docs/installation/config-maintenance/environment-variables)
 - [常见问题](https://docs.newapi.pro/zh/docs/support/faq)
