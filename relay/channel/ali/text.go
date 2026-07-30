@@ -9,7 +9,11 @@ import (
 
 const EnableSearchModelSuffix = "-internet"
 
-func requestOpenAI2Ali(request dto.GeneralOpenAIRequest) *dto.GeneralOpenAIRequest {
+func requestOpenAI2Ali(request dto.GeneralOpenAIRequest, modelName ...string) *dto.GeneralOpenAIRequest {
+	name := ""
+	if len(modelName) > 0 { name = modelName[0] }
+	if name == "" { name = request.Model }
+	if !dto.IsQwenThinkingBudgetModel(name) { request.ThinkingBudget = nil }
 	topP := lo.FromPtrOr(request.TopP, 0)
 	if topP >= 1 {
 		request.TopP = lo.ToPtr(0.999)

@@ -90,6 +90,7 @@ type GeneralOpenAIRequest struct {
 	// Ali Qwen Params
 	VlHighResolutionImages json.RawMessage `json:"vl_high_resolution_images,omitempty"`
 	EnableThinking         json.RawMessage `json:"enable_thinking,omitempty"`
+	ThinkingBudget         json.RawMessage `json:"thinking_budget,omitempty"`
 	ChatTemplateKwargs     json.RawMessage `json:"chat_template_kwargs,omitempty"`
 	EnableSearch           json.RawMessage `json:"enable_search,omitempty"`
 	// ollama Params
@@ -106,6 +107,11 @@ type GeneralOpenAIRequest struct {
 	SearchMode             json.RawMessage `json:"search_mode,omitempty"`
 	// Minimax
 	ReasoningSplit json.RawMessage `json:"reasoning_split,omitempty"`
+}
+
+func IsQwenThinkingBudgetModel(modelName string) bool {
+	n := strings.ToLower(strings.TrimSpace(modelName))
+	return strings.HasPrefix(n, "qwen") || strings.Contains(n, "/qwen") || strings.HasPrefix(n, "qwq") || strings.Contains(n, "/qwq")
 }
 
 func (r *GeneralOpenAIRequest) GetTokenCountMeta() *types.TokenCountMeta {
@@ -881,6 +887,7 @@ type OpenAIResponsesRequest struct {
 	ClientMetadata json.RawMessage `json:"client_metadata,omitempty"`
 	// qwen
 	EnableThinking json.RawMessage `json:"enable_thinking,omitempty"`
+	ThinkingBudget json.RawMessage `json:"thinking_budget,omitempty"`
 	// perplexity
 	Preset json.RawMessage `json:"preset,omitempty"`
 }
