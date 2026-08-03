@@ -14,9 +14,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	appconstant "github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
@@ -538,5 +538,24 @@ func TestHandleImageResponseSSEUsesOutputItemDoneWhenCompletedOutputEmpty(t *tes
 	}
 	if len(imageResponse.Data) != 1 {
 		t.Fatalf("expected only final output_item.done image, got %d items: %s", len(imageResponse.Data), w.Body.String())
+	}
+}
+
+func TestGetRequestURLAlphaSearch(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:    appconstant.ChannelTypeCodex,
+			ChannelBaseUrl: "https://chatgpt.com",
+		},
+		RelayMode: relayconstant.RelayModeAlphaSearch,
+	}
+
+	url, err := adaptor.GetRequestURL(info)
+	if err != nil {
+		t.Fatalf("GetRequestURL returned error: %v", err)
+	}
+	if url != "https://chatgpt.com/backend-api/codex/alpha/search" {
+		t.Fatalf("unexpected alpha search URL: %s", url)
 	}
 }
