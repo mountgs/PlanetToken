@@ -93,13 +93,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			if c.GetBool(constant.ContextKeyCodexImageStreamCommitted) {
+				openAIError := newAPIError.ToOpenAIError()
 				payload, marshalErr := common.Marshal(gin.H{
-					"type": "error",
-					"error": gin.H{
-						"message": "upstream image generation failed",
-						"type":    "upstream_error",
-						"code":    "image_stream_error",
-					},
+					"type":  "error",
+					"error": openAIError,
 				})
 				if marshalErr == nil {
 					_ = helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: "error"}, string(payload))

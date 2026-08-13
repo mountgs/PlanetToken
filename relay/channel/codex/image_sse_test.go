@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -89,11 +90,11 @@ func TestHandleCodexImageStreamMapsEditPartialAndURL(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `data:image/webp;base64,ZmluYWw=`)
 }
 
-func TestHandleCodexImageStreamSanitizesErrorAfterPartial(t *testing.T) {
+func TestHandleCodexImageStreamPassesStructuredErrorAfterPartial(t *testing.T) {
 	body := strings.Join([]string{
 		`data: {"type":"response.image_generation_call.partial_image","partial_image_b64":"cGFydGlhbA==","partial_image_index":0}`,
 		``,
-		`data: {"type":"response.failed","error":{"message":"Bearer secret-token at https://internal.example"}}`,
+		`data: {"type":"response.failed","response":{"id":"resp_123","error":{"message":"Your request was rejected by the safety system.","type":"image_generation_user_error","code":"moderation_blocked","param":"prompt"}}}`,
 		``,
 	}, "\n")
 	c, recorder, resp, info := newCodexImageStreamTest(t, body, relayconstant.RelayModeImagesGenerations, "b64_json")
@@ -102,10 +103,62 @@ func TestHandleCodexImageStreamSanitizesErrorAfterPartial(t *testing.T) {
 
 	require.Nil(t, apiErr)
 	require.Contains(t, recorder.Body.String(), "event: error")
-	require.Contains(t, recorder.Body.String(), "upstream image generation failed")
+	require.Contains(t, recorder.Body.String(), `"message":"Your request was rejected by the safety system."`)
+	require.Contains(t, recorder.Body.String(), `"type":"image_generation_user_error"`)
+	require.Contains(t, recorder.Body.String(), `"code":"moderation_blocked"`)
+	require.Contains(t, recorder.Body.String(), `"param":"prompt"`)
+	require.Contains(t, recorder.Body.String(), "data: [DONE]")
+	require.True(t, info.StreamStatus.HasErrors())
+}
+
+func TestHandleCodexImageStreamSanitizesStructuredErrorAfterPartial(t *testing.T) {
+	body := strings.Join([]string{
+		`data: {"type":"response.image_generation_call.partial_image","partial_image_b64":"cGFydGlhbA==","partial_image_index":0}`,
+		``,
+		`data: {"type":"response.failed","response":{"error":{"message":"Bearer secret-token at https://internal.example","type":"image_generation_user_error","code":"moderation_blocked","param":"prompt"}}}`,
+		``,
+	}, "\n")
+	c, recorder, resp, info := newCodexImageStreamTest(t, body, relayconstant.RelayModeImagesGenerations, "b64_json")
+
+	_, apiErr := handleImageStreamResponse(c, resp, info)
+
+	require.Nil(t, apiErr)
+	require.Contains(t, recorder.Body.String(), "event: error")
 	require.NotContains(t, recorder.Body.String(), "secret-token")
 	require.NotContains(t, recorder.Body.String(), "internal.example")
+	require.Contains(t, recorder.Body.String(), `"type":"image_generation_user_error"`)
+	require.Contains(t, recorder.Body.String(), `"code":"moderation_blocked"`)
+	require.Contains(t, recorder.Body.String(), `"param":"prompt"`)
 	require.True(t, info.StreamStatus.HasErrors())
+}
+
+func TestCodexImageStreamIncompleteContentFilterIsNotRetryable(t *testing.T) {
+	body := `data: {"type":"response.incomplete","response":{"id":"resp_123","status":"incomplete","incomplete_details":{"reason":"content_filter"}}}` + "\n\n"
+	c, recorder, resp, info := newCodexImageStreamTest(t, body, relayconstant.RelayModeImagesGenerations, "b64_json")
+
+	usage, apiErr := handleImageStreamResponse(c, resp, info)
+
+	require.Nil(t, usage)
+	require.NotNil(t, apiErr)
+	require.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
+	require.True(t, types.IsSkipRetryError(apiErr))
+	require.Equal(t, "response_incomplete", string(apiErr.GetErrorCode()))
+	require.Contains(t, apiErr.Error(), "content_filter")
+	require.Empty(t, recorder.Body.String())
+}
+
+func TestCollectCodexImageSSEPassesCompletedRefusal(t *testing.T) {
+	body := strings.Join([]string{
+		`data: {"type":"response.completed","response":{"output":[{"type":"message","content":[{"type":"output_text","text":"The safety system rejected this image request."}]}]}}`,
+		``,
+	}, "\n")
+
+	_, _, _, _, apiErr := collectImagesFromSSE([]byte(body))
+
+	require.NotNil(t, apiErr)
+	require.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
+	require.Contains(t, apiErr.Error(), "The safety system rejected this image request.")
+	require.True(t, types.IsSkipRetryError(apiErr))
 }
 
 func newCodexImageStreamTest(t *testing.T, body string, mode int, responseFormat string) (*gin.Context, *httptest.ResponseRecorder, *http.Response, *relaycommon.RelayInfo) {

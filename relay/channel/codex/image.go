@@ -406,6 +406,9 @@ func collectImagesFromSSE(body []byte) ([]imageCallResult, int64, *dto.Usage, im
 			if len(partialResults) > 0 {
 				return partialResults, createdAt, usage, firstPartial, nil
 			}
+			if refusalErr := codexImageRefusalError(codexImageRefusalMessage(payload)); refusalErr != nil {
+				return nil, 0, nil, imageCallResult{}, refusalErr.toNewAPIError()
+			}
 			return results, createdAt, usage, firstMeta, nil
 		case "response.output_item.done":
 			item := gjson.GetBytes(payload, "item")
@@ -430,12 +433,11 @@ func collectImagesFromSSE(body []byte) ([]imageCallResult, int64, *dto.Usage, im
 				}
 				partialResults = append(partialResults, result)
 			}
-		case "response.error", "response.failed":
-			message := extractCodexErrorMessage(payload)
-			if message == "" {
-				message = strings.TrimSpace(string(payload))
+		case "response.error", "response.failed", "response.incomplete", "error":
+			if upstreamErr := parseCodexImageUpstreamError(payload); upstreamErr != nil {
+				return nil, 0, nil, imageCallResult{}, upstreamErr.toNewAPIError()
 			}
-			return nil, 0, nil, imageCallResult{}, types.NewOpenAIError(fmt.Errorf("codex upstream error: %s", truncateErrorMessage(message)), types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+			return nil, 0, nil, imageCallResult{}, types.NewOpenAIError(fmt.Errorf("codex upstream returned an image stream error"), types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 		}
 	}
 	if err := scanner.Err(); err != nil {

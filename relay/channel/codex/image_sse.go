@@ -172,6 +172,7 @@ func handleImageStreamResponse(c *gin.Context, resp *http.Response, info *relayc
 	var doneResults []imageCallResult
 	completedImages := int64(0)
 	realOutput := false
+	var refusalText strings.Builder
 
 	pingInterval := time.Duration(constant.ImageStreamPingInterval) * time.Second
 	var pingTimer imageStreamTimer
@@ -208,11 +209,24 @@ func handleImageStreamResponse(c *gin.Context, resp *http.Response, info *relayc
 			return usage, nil
 		}
 		if !realOutput {
+			var upstreamErr *codexImageUpstreamError
+			if errors.As(err, &upstreamErr) {
+				return nil, upstreamErr.toNewAPIError()
+			}
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 		}
 		info.StreamStatus.RecordError(err.Error())
 		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonHandlerStop, err)
-		_ = writeCodexImageStreamError(c, "upstream image generation failed")
+		var upstreamErr *codexImageUpstreamError
+		if !errors.As(err, &upstreamErr) {
+			upstreamErr = &codexImageUpstreamError{
+				StatusCode: http.StatusBadGateway,
+				Type:       "upstream_error",
+				Code:       "image_stream_error",
+				Message:    "upstream image generation failed",
+			}
+		}
+		_ = writeCodexImageStreamError(c, upstreamErr)
 		_ = helper.StringData(c, "[DONE]")
 		return usage, nil
 	}
@@ -255,6 +269,13 @@ func handleImageStreamResponse(c *gin.Context, resp *http.Response, info *relayc
 				eventType = read.frame.Event
 			}
 			switch eventType {
+			case "response.output_text.delta":
+				if delta := strings.TrimSpace(gjson.GetBytes(payload, "delta").String()); delta != "" {
+					if refusalText.Len() > 0 {
+						refusalText.WriteByte(' ')
+					}
+					refusalText.WriteString(delta)
+				}
 			case "response.image_generation_call.partial_image":
 				partialB64 := strings.TrimSpace(gjson.GetBytes(payload, "partial_image_b64").String())
 				if partialB64 == "" {
@@ -286,6 +307,12 @@ func handleImageStreamResponse(c *gin.Context, resp *http.Response, info *relayc
 						doneResults = append(doneResults, result)
 					}
 				}
+				if refusal := codexImageRefusalMessage(payload); refusal != "" {
+					if refusalText.Len() > 0 {
+						refusalText.WriteByte(' ')
+					}
+					refusalText.WriteString(refusal)
+				}
 			case "response.completed":
 				results, createdAt, completedUsage, _, apiErr := extractImagesFromCompletedJSON(payload)
 				if apiErr != nil {
@@ -295,6 +322,10 @@ func handleImageStreamResponse(c *gin.Context, resp *http.Response, info *relayc
 					results = doneResults
 				}
 				if len(results) == 0 {
+					refusal := strings.TrimSpace(strings.Join([]string{refusalText.String(), codexImageRefusalMessage(payload)}, " "))
+					if refusalErr := codexImageRefusalError(refusal); refusalErr != nil {
+						return finishWithError(refusalErr)
+					}
 					return finishWithError(fmt.Errorf("upstream did not return image output"))
 				}
 				usage = completedUsage
@@ -317,12 +348,11 @@ func handleImageStreamResponse(c *gin.Context, resp *http.Response, info *relayc
 				}
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
 				return usage, nil
-			case "response.error", "response.failed":
-				message := extractCodexErrorMessage(payload)
-				if message == "" {
-					message = "codex upstream returned an image stream error"
+			case "response.error", "response.failed", "response.incomplete", "error":
+				if upstreamErr := parseCodexImageUpstreamError(payload); upstreamErr != nil {
+					return finishWithError(upstreamErr)
 				}
-				return finishWithError(fmt.Errorf("%s", truncateErrorMessage(message)))
+				return finishWithError(fmt.Errorf("codex upstream returned an image stream error"))
 			}
 		}
 	}
@@ -368,14 +398,21 @@ func buildCodexImageStreamEvent(event string, result imageCallResult, createdAt 
 	return common.Marshal(payload)
 }
 
-func writeCodexImageStreamError(c *gin.Context, message string) error {
+func writeCodexImageStreamError(c *gin.Context, upstreamErr *codexImageUpstreamError) error {
+	if upstreamErr == nil {
+		upstreamErr = &codexImageUpstreamError{Type: "upstream_error", Code: "image_stream_error", Message: "upstream image generation failed"}
+	}
+	errorPayload := map[string]any{
+		"message": upstreamErr.Error(),
+		"type":    firstNonEmpty(upstreamErr.Type, "upstream_error"),
+		"code":    firstNonEmpty(upstreamErr.Code, "image_stream_error"),
+	}
+	if upstreamErr.Param != "" {
+		errorPayload["param"] = upstreamErr.Param
+	}
 	payload, err := common.Marshal(map[string]any{
-		"type": "error",
-		"error": map[string]any{
-			"message": message,
-			"type":    "upstream_error",
-			"code":    "image_stream_error",
-		},
+		"type":  "error",
+		"error": errorPayload,
 	})
 	if err != nil {
 		return err
