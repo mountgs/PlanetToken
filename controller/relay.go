@@ -92,6 +92,21 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
+			if c.GetBool(constant.ContextKeyCodexImageStreamCommitted) {
+				payload, marshalErr := common.Marshal(gin.H{
+					"type": "error",
+					"error": gin.H{
+						"message": "upstream image generation failed",
+						"type":    "upstream_error",
+						"code":    "image_stream_error",
+					},
+				})
+				if marshalErr == nil {
+					_ = helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: "error"}, string(payload))
+				}
+				_ = helper.StringData(c, "[DONE]")
+				return
+			}
 			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
@@ -330,6 +345,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
 	if openaiErr == nil {
+		return false
+	}
+	if c.GetBool(constant.ContextKeyCodexImageRealOutput) {
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {

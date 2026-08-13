@@ -210,6 +210,13 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 				}
 				imageRequest.Stream = common.GetPointer(stream)
 			}
+			if partialImagesValue := strings.TrimSpace(formData.Get("partial_images")); partialImagesValue != "" {
+				partialImages, err := parsePartialImages(partialImagesValue)
+				if err != nil {
+					return nil, err
+				}
+				imageRequest.PartialImages, _ = common.Marshal(partialImages)
+			}
 			if imageValue := formData.Get("image"); imageValue != "" {
 				imageRequest.Image, _ = common.Marshal(imageValue)
 			}
@@ -249,6 +256,12 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 		if imageRequest.N != nil && *imageRequest.N > dto.MaxImageN {
 			return nil, fmt.Errorf("n must be an integer between 1 and %d", dto.MaxImageN)
 		}
+		if len(imageRequest.PartialImages) > 0 {
+			var partialImages int
+			if err := common.Unmarshal(imageRequest.PartialImages, &partialImages); err != nil || partialImages < 0 || partialImages > 3 {
+				return nil, errors.New("partial_images must be an integer between 0 and 3")
+			}
+		}
 
 		// Not "256x256", "512x512", or "1024x1024"
 		if imageRequest.Model == "dall-e-2" || imageRequest.Model == "dall-e" {
@@ -284,6 +297,14 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 	}
 
 	return imageRequest, nil
+}
+
+func parsePartialImages(value string) (int, error) {
+	partialImages, err := strconv.Atoi(value)
+	if err != nil || partialImages < 0 || partialImages > 3 {
+		return 0, errors.New("partial_images must be an integer between 0 and 3")
+	}
+	return partialImages, nil
 }
 
 func GetAndValidateClaudeRequest(c *gin.Context) (textRequest *dto.ClaudeRequest, err error) {

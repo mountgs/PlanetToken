@@ -1,12 +1,28 @@
 # Session Progress Log
 
+## 2026-08-12 Codex Image Streaming Implementation
+
+- Implemented explicit `stream:true` routing while preserving Codex upstream SSE aggregation for missing/false `stream`.
+- Added `partial_images` validation for JSON and multipart requests (`0..3`).
+- Added a Codex-specific complete SSE frame decoder with `event`, multiline `data`, comments, CRLF, `[DONE]`, EOF-before-close delivery, and a 128 MiB limit.
+- Added Images partial/completed/error mapping, immediate flush, URL data URLs, independent heartbeat configuration, disconnect cancellation, retry output markers, and completed-count billing settlement.
+- Added focused tests for request bounds, frame parsing, event mapping, sanitization, disconnect closure, heartbeat classification, pricing count, and env validation.
+- Focused backend tests and formatting checks pass. Production proxy-chain validation remains pending.
+
 ## Current State
 
-**Last Updated:** 2026-07-30
+**Last Updated:** 2026-08-13
 **Active Epic:** feat-codex-epic — Codex CLI 生产商用接入  
-**Phase:** **feat-codex-007 代码移植完成；继续 feat-codex-004 E2E**
+**Phase:** **feat-codex-image-stream-001..005 本地验证完成；006 等待生产计费与复杂生图 E2E**
 **Commercial models:** `gpt-5.4`、`gpt-5.5`（仅对外售卖此二档）  
 **Server:** `{SERVER_HOST}`（具体主机勿再写入公开仓库；本地私密记录维护）
+
+## Queued Work（未激活）
+
+- `feat-codex-image-stream-epic`：Codex Image 2 显式 `stream:true`、Images SSE 事件转换、10 秒独立心跳、断连取消、重试边界与按次计费保护。
+- 需求契约：`docs/requirements/codex-image-streaming.md`。
+- 2026-08-13 已完成 `001..005` 实现和本地 Go 验证；当前唯一进行中功能为 `006`，等待生产凭据与 Nginx 日志。
+- 实施顺序：`001 请求契约` → `002 frame 处理器` → `003 事件输出` + `004 心跳配置` → `005 断连/重试` → `006 计费/E2E`。
 
 ## Completed
 

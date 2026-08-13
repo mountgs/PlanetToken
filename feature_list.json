@@ -128,8 +128,8 @@
       "name": "Codex Relay E2E 自动化校验",
       "description": "verify-codex-relay.sh 全阶段 PASS：/v1/responses 同步+流式",
       "dependencies": ["feat-codex-003"],
-      "status": "in-progress",
-      "evidence": "2026-07-10: gpt-5.4/5.5 stream:true E2E PASS；stream:false 上游要求 streaming；verify 脚本 sync 用例需更新",
+      "status": "blocked",
+      "evidence": "2026-07-10: gpt-5.4/5.5 stream:true E2E PASS；stream:false 上游要求 streaming；verify 脚本 sync 用例需更新。2026-08-12: 剩余全阶段 E2E 需要生产 RELAY_URL/RELAY_TOKEN，暂时阻塞并让出唯一活动功能。",
       "verification": {
         "automated": [
           "./scripts/verify-codex-relay.sh --url $RELAY_URL --token $RELAY_TOKEN --model $RELAY_MODEL --phase all"
@@ -192,6 +192,123 @@
           "部署后用 Codex Plus 渠道分别调用 /v1/images/generations 与 /v1/images/edits"
         ],
         "acceptance": "gpt-image-2 被识别为图片模型；Codex Images 请求转为 Responses image_generation；SSE 结果聚合为 OpenAI Images response"
+      }
+    },
+    {
+      "id": "feat-codex-image-stream-epic",
+      "name": "Codex Image 2 流式生成与保活",
+      "description": "在现有 Codex Images JSON 实现上增量增加显式 stream:true、Images SSE 事件转换、心跳、取消、重试边界和按次计费保护；完整契约见 docs/requirements/codex-image-streaming.md",
+      "dependencies": ["feat-codex-007"],
+      "status": "in-progress",
+      "evidence": "2026-08-13: 需求契约和流式实现已完成，定向自动化测试通过；生产代理链路验收仍待执行。",
+      "verification": {
+        "automated": [
+          "go test ./relay/channel/codex ./relay/helper ./relay/constant",
+          "./init.sh"
+        ],
+        "manual": [
+          "生产复杂生图请求在原超时窗口内持续收到 SSE 心跳或真实事件",
+          "最终收到 completed 与 [DONE]，对应 Nginx 日志无 upstream timed out"
+        ],
+        "acceptance": "feat-codex-image-stream-001 至 006 全部完成；生产 E2E 前仅允许标记代码完成、待线上验收"
+      }
+    },
+    {
+      "id": "feat-codex-image-stream-001",
+      "name": "Images 流式请求契约与参数校验",
+      "description": "仅在显式 stream:true 时启用 SSE；保持 stream 缺失/false 的 JSON 行为；校验 partial_images 为 0..3 且默认 0",
+      "dependencies": ["feat-codex-007"],
+      "status": "done",
+      "evidence": "2026-08-13: 仅显式 stream:true 启用；partial_images JSON/multipart 校验 0..3。Go 1.25.1 定向测试与受影响包测试 PASS。",
+      "verification": {
+        "automated": [
+          "go test ./relay/helper ./relay/channel/codex -run 'Stream|PartialImages|ImageRequest'"
+        ],
+        "manual": [],
+        "acceptance": "显式 stream:true 被保留并路由到 Codex 图片流路径；其他请求保持原 JSON 契约；partial_images 越界在请求上游前返回 400"
+      }
+    },
+    {
+      "id": "feat-codex-image-stream-002",
+      "name": "Codex 图片专用 SSE frame 处理器",
+      "description": "增量解析完整 SSE frame，支持 event、多行 data、注释、[DONE] 和 128 MiB 上限；流式路径移除整流 io.ReadAll",
+      "dependencies": ["feat-codex-image-stream-001"],
+      "status": "done",
+      "evidence": "2026-08-13: Codex 专用完整 SSE frame decoder 支持 event、多行 data、注释、CRLF、[DONE]、EOF 前交付及 128 MiB 上限；frame/SSE/large/EOF 定向测试 PASS。",
+      "verification": {
+        "automated": [
+          "go test ./relay/channel/codex -run 'SSE|Frame|Large|BeforeEOF'"
+        ],
+        "manual": [],
+        "acceptance": "首个上游 frame 在 EOF 前写到下游；多行 data 与大 Base64 frame 正常；超限受控失败且无全响应聚合"
+      }
+    },
+    {
+      "id": "feat-codex-image-stream-003",
+      "name": "Images SSE 事件转换与串行输出",
+      "description": "将 Codex Responses 图片事件转换为 generation/edit 的 partial/completed/error 事件，单 writer loop 串行 Flush，完成后发送 [DONE]",
+      "dependencies": ["feat-codex-image-stream-002"],
+      "status": "done",
+      "evidence": "2026-08-13: generation/edit partial/completed/error 映射、data URL、串行 writer/Flush 和 [DONE] 已实现；事件映射与输出定向测试 PASS。",
+      "verification": {
+        "automated": [
+          "go test ./relay/channel/codex -run 'Partial|Completed|Error|Done|ResponseFormat'"
+        ],
+        "manual": [],
+        "acceptance": "只转发真实 partial；completed 带完整图片与元数据；url 使用 data URL；事件/心跳字节不交错"
+      }
+    },
+    {
+      "id": "feat-codex-image-stream-004",
+      "name": "独立图片流心跳配置",
+      "description": "新增 IMAGE_STREAM_PING_INTERVAL，默认 10 秒、0 禁用、有效范围 5..60；仅影响 Codex Images stream:true",
+      "dependencies": ["feat-codex-image-stream-002"],
+      "status": "done",
+      "evidence": "2026-08-13: IMAGE_STREAM_PING_INTERVAL 启动校验与可注入 timer 已实现，默认 10、0 禁用、5..60；心跳/配置定向测试 PASS。",
+      "verification": {
+        "automated": [
+          "go test ./constant ./relay/channel/codex -run 'ImageStreamPing|Heartbeat'"
+        ],
+        "manual": [],
+        "acceptance": "静默达到间隔才发送 :\\n\\n 并 Flush；真实事件重置计时；非法配置启动失败；测试使用可控 ticker"
+      }
+    },
+    {
+      "id": "feat-codex-image-stream-005",
+      "name": "断连、错误与渠道重试边界",
+      "description": "客户端断开立即取消上游；流前错误保留 HTTP 状态，流后错误使用脱敏 SSE error；心跳不阻止重试，真实图片事件后禁止重试",
+      "dependencies": [
+        "feat-codex-image-stream-003",
+        "feat-codex-image-stream-004"
+      ],
+      "status": "done",
+      "evidence": "2026-08-13: 客户端取消、流前/流后错误、脱敏、心跳后重试及真实图片输出后禁止重试均已实现；生命周期与重试边界测试 PASS。",
+      "verification": {
+        "automated": [
+          "go test ./relay/channel/codex -run 'Disconnect|Cancel|Retry|Failover|Sanitize'"
+        ],
+        "manual": [],
+        "acceptance": "断连关闭上游 body；敏感信息不泄露；仅心跳后仍可重试；partial/completed 后不换渠道；错误后只发送 [DONE] 并终止"
+      }
+    },
+    {
+      "id": "feat-codex-image-stream-006",
+      "name": "流式图片按次计费与回归验收",
+      "description": "固定价格按 ModelPrice*n*GroupRatio 预扣；正常完成按实际 completed 结算；断连按请求 n 保守计费；完成定向、全量和生产 E2E 证据",
+      "dependencies": ["feat-codex-image-stream-005"],
+      "status": "in-progress",
+      "evidence": "2026-08-13: 固定价计费、完成数结算和断连保护的代码与自动化测试已完成；生产 Nginx/CDN 验收尚未执行。",
+      "verification": {
+        "automated": [
+          "go test ./relay/channel/codex ./relay/helper ./relay/constant",
+          "./init.sh"
+        ],
+        "manual": [
+          "配置 gpt-image-2 固定 ModelPrice，验证 n=1 与 n>1 的扣费",
+          "复杂生成超过原超时窗口仍持续收到心跳并最终完成",
+          "核对 Nginx 日志无 upstream timed out"
+        ],
+        "acceptance": "心跳和 partial 不计次；正常完成按实际 completed；断连保留请求 n；代码验证通过且生产 E2E 证据已记录"
       }
     }
   ]

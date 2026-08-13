@@ -1,5 +1,10 @@
 package constant
 
+const (
+	ContextKeyCodexImageStreamCommitted = "codex_image_stream_committed"
+	ContextKeyCodexImageRealOutput      = "codex_image_real_output"
+)
+
 type ContextKey string
 
 const (

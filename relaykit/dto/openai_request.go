@@ -108,11 +108,6 @@ type GeneralOpenAIRequest struct {
 	ReasoningSplit json.RawMessage `json:"reasoning_split,omitempty"`
 }
 
-func IsQwenThinkingBudgetModel(modelName string) bool {
-	n := strings.ToLower(strings.TrimSpace(modelName))
-	return strings.HasPrefix(n, "qwen") || strings.Contains(n, "/qwen") || strings.HasPrefix(n, "qwq") || strings.Contains(n, "/qwq")
-}
-
 func (r GeneralOpenAIRequest) MarshalJSON() ([]byte, error) {
 	type Alias GeneralOpenAIRequest
 	if !IsQwenThinkingBudgetModel(r.Model) {

@@ -293,6 +293,9 @@ func InitResources() error {
 
 	// 加载环境变量
 	common.InitEnv()
+	if err := constant.InitImageStreamPingInterval(); err != nil {
+		return err
+	}
 
 	logger.SetupLogger()
 
