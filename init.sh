@@ -3,11 +3,26 @@ set -e
 
 echo "=== Harness Initialization ==="
 
+temporary_web_dist=false
+if [ ! -f web/dist/index.html ]; then
+  mkdir -p web/dist
+  printf '%s\n' '<!doctype html><title>test placeholder</title>' > web/dist/index.html
+  temporary_web_dist=true
+fi
+
+cleanup() {
+  if [ "$temporary_web_dist" = true ]; then
+    rm -f web/dist/index.html
+    rmdir web/dist 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
 echo "=== go test ./... ==="
 go test ./...
 
-echo "=== cd web/default && bun run typecheck ==="
-cd web/default && bun run typecheck
+echo "=== cd web && bun run typecheck ==="
+(cd web && bun run typecheck)
 
 echo "=== Verification Complete ==="
 echo ""
