@@ -16,8 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/gin-gonic/gin"
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 type Adaptor struct {
@@ -101,115 +99,8 @@ func normalizeCodexResponsesTools(raw json.RawMessage) (json.RawMessage, error) 
 	return common.Marshal(tools)
 }
 
-func buildCodexRawResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest, isCompact bool) (json.RawMessage, bool, error) {
-	if c == nil || c.Request == nil || c.Request.Body == nil {
-		return nil, false, nil
-	}
-	storage, err := common.GetBodyStorage(c)
-	if err != nil {
-		return nil, false, err
-	}
-	raw, err := storage.Bytes()
-	if err != nil {
-		return nil, false, err
-	}
-	if len(raw) == 0 || common.GetJsonType(raw) != "object" {
-		return nil, false, nil
-	}
-
-	out := string(raw)
-	if request.Model != "" && gjson.Get(out, "model").String() != request.Model {
-		out, err = sjson.Set(out, "model", request.Model)
-		if err != nil {
-			return nil, false, err
-		}
-	}
-
-	input := gjson.Get(out, "input")
-	if input.Exists() && input.Type == gjson.String {
-		wrapped := []map[string]string{{
-			"role":    "user",
-			"content": input.String(),
-		}}
-		out, err = sjson.Set(out, "input", wrapped)
-		if err != nil {
-			return nil, false, err
-		}
-	}
-
-	if tools := gjson.Get(out, "tools"); tools.Exists() && tools.IsArray() {
-		normalizedTools, err := normalizeCodexResponsesTools(json.RawMessage(tools.Raw))
-		if err != nil {
-			return nil, false, err
-		}
-		if string(normalizedTools) != tools.Raw {
-			out, err = sjson.SetRaw(out, "tools", string(normalizedTools))
-			if err != nil {
-				return nil, false, err
-			}
-		}
-	}
-
-	if info != nil && info.ChannelMeta != nil && info.ChannelSetting.SystemPrompt != "" {
-		systemPrompt := info.ChannelSetting.SystemPrompt
-		instructions := gjson.Get(out, "instructions")
-		if !instructions.Exists() {
-			out, err = sjson.Set(out, "instructions", systemPrompt)
-			if err != nil {
-				return nil, false, err
-			}
-		} else if info.ChannelSetting.SystemPromptOverride {
-			if instructions.Type == gjson.String {
-				existing := strings.TrimSpace(instructions.String())
-				if existing != "" {
-					systemPrompt += "\n" + existing
-				}
-			}
-			out, err = sjson.Set(out, "instructions", systemPrompt)
-			if err != nil {
-				return nil, false, err
-			}
-		}
-	} else if !gjson.Get(out, "instructions").Exists() {
-		out, err = sjson.Set(out, "instructions", "")
-		if err != nil {
-			return nil, false, err
-		}
-	}
-
-	if !isCompact {
-		out, err = sjson.Set(out, "stream", true)
-		if err != nil {
-			return nil, false, err
-		}
-		out, err = sjson.Set(out, "store", false)
-		if err != nil {
-			return nil, false, err
-		}
-		out, err = sjson.Delete(out, "max_output_tokens")
-		if err != nil {
-			return nil, false, err
-		}
-		out, err = sjson.Delete(out, "temperature")
-		if err != nil {
-			return nil, false, err
-		}
-	}
-
-	return json.RawMessage(out), true, nil
-}
-
-func IsRawResponsesRequest(request any) bool {
-	_, ok := request.(json.RawMessage)
-	return ok
-}
-
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
 	isCompact := info != nil && info.RelayMode == relayconstant.RelayModeResponsesCompact
-
-	if rawRequest, ok, err := buildCodexRawResponsesRequest(c, info, request, isCompact); ok || err != nil {
-		return rawRequest, err
-	}
 
 	if len(request.Input) > 0 {
 		normalizedInput, err := normalizeCodexResponsesInput(request.Input)
@@ -276,6 +167,8 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	// rm max_output_tokens
 	request.MaxOutputTokens = nil
 	request.Temperature = nil
+	request.FrequencyPenalty = nil
+	request.PresencePenalty = nil
 	return request, nil
 }
 

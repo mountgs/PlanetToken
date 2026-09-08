@@ -18,6 +18,9 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
 
@@ -71,7 +74,7 @@ func TestConvertOpenAIResponsesRequest_ArrayInputUnchanged(t *testing.T) {
 	}
 }
 
-func TestConvertOpenAIResponsesRequest_RawPassthroughPreservesCodexInputItems(t *testing.T) {
+func TestConvertOpenAIResponsesRequest_PreservesCodexInputItems(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	adaptor := &Adaptor{}
 	rawBody := []byte(`{
@@ -103,9 +106,13 @@ func TestConvertOpenAIResponsesRequest_RawPassthroughPreservesCodexInputItems(t 
 		t.Fatalf("ConvertOpenAIResponsesRequest returned error: %v", err)
 	}
 
-	raw, ok := converted.(json.RawMessage)
+	convertedRequest, ok := converted.(dto.OpenAIResponsesRequest)
 	if !ok {
-		t.Fatalf("expected raw passthrough request, got %T", converted)
+		t.Fatalf("expected typed responses request, got %T", converted)
+	}
+	raw, err := common.Marshal(convertedRequest)
+	if err != nil {
+		t.Fatalf("converted request marshal failed: %v", err)
 	}
 	var out map[string]any
 	if err := common.Unmarshal(raw, &out); err != nil {
@@ -139,7 +146,7 @@ func TestConvertOpenAIResponsesRequest_RawPassthroughPreservesCodexInputItems(t 
 	}
 }
 
-func TestConvertOpenAIResponsesRequest_RawPassthroughPreservesSystemPromptSetting(t *testing.T) {
+func TestConvertOpenAIResponsesRequest_PreservesSystemPromptSetting(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	adaptor := &Adaptor{}
 	rawBody := []byte(`{"model":"gpt-5.4","input":[{"role":"user","content":"hi"}],"instructions":"base"}`)
@@ -166,9 +173,13 @@ func TestConvertOpenAIResponsesRequest_RawPassthroughPreservesSystemPromptSettin
 		t.Fatalf("ConvertOpenAIResponsesRequest returned error: %v", err)
 	}
 
-	raw, ok := converted.(json.RawMessage)
+	convertedRequest, ok := converted.(dto.OpenAIResponsesRequest)
 	if !ok {
-		t.Fatalf("expected raw passthrough request, got %T", converted)
+		t.Fatalf("expected typed responses request, got %T", converted)
+	}
+	raw, err := common.Marshal(convertedRequest)
+	if err != nil {
+		t.Fatalf("converted request marshal failed: %v", err)
 	}
 	if got := gjson.GetBytes(raw, "instructions").String(); got != "system\nbase" {
 		t.Fatalf("unexpected instructions: %q", got)
@@ -558,4 +569,31 @@ func TestGetRequestURLAlphaSearch(t *testing.T) {
 	if url != "https://chatgpt.com/backend-api/codex/alpha/search" {
 		t.Fatalf("unexpected alpha search URL: %s", url)
 	}
+}
+
+// The Codex backend rejects these fields, so the adaptor clears them rather
+// than forwarding what the client sent.
+func TestConvertOpenAIResponsesRequestDropsPenalties(t *testing.T) {
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelType: appconstant.ChannelTypeCodex},
+		RelayMode:   relayconstant.RelayModeResponses,
+	}
+
+	converted, err := adaptor.ConvertOpenAIResponsesRequest(nil, info, dto.OpenAIResponsesRequest{
+		Model:            "gpt-5-codex",
+		Input:            json.RawMessage(`"hello"`),
+		MaxOutputTokens:  lo.ToPtr(uint(128)),
+		Temperature:      lo.ToPtr(1.0),
+		FrequencyPenalty: json.RawMessage(`1.5`),
+		PresencePenalty:  json.RawMessage(`1.5`),
+	})
+	require.NoError(t, err)
+
+	request, ok := converted.(dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	assert.Nil(t, request.MaxOutputTokens)
+	assert.Nil(t, request.Temperature)
+	assert.Nil(t, request.FrequencyPenalty)
+	assert.Nil(t, request.PresencePenalty)
 }
