@@ -3,6 +3,8 @@ package constant
 const (
 	ContextKeyCodexImageStreamCommitted = "codex_image_stream_committed"
 	ContextKeyCodexImageRealOutput      = "codex_image_real_output"
+	ContextKeyResponsesSemanticOutput   = "responses_semantic_output"
+	ContextKeyResponsesStreamCommitted  = "responses_stream_committed"
 )
 
 type ContextKey string

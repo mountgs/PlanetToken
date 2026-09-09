@@ -129,6 +129,9 @@ func Distribute() func(c *gin.Context) {
 					affinitySatisfied := false
 					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled {
 						affinitySatisfied, _ = model.ChannelSatisfiesFilters(preferred, modelRequest.Model, constraints.Filters)
+						if affinitySatisfied && service.IsResponsesRetryRequestPath(c.Request.URL.Path) && service.IsResponsesChannelCooling(preferred.Id, modelRequest.Model) {
+							affinitySatisfied = false
+						}
 					}
 					if affinitySatisfied {
 						if usingGroup == "auto" {

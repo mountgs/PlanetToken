@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,6 +62,28 @@ func TestShouldRetryTaskRelayHonorsPinRetryMode(t *testing.T) {
 		RetryMode: dto.PinRetrySingleAttempt,
 	})
 	assert.False(t, shouldRetryTaskRelay(token, 1, taskErr, 1))
+}
+
+func TestShouldRetryResponsesTransientHonorsFailoverBudgetAndPin(t *testing.T) {
+	apiErr := types.NewOpenAIError(
+		errors.New("Selected model is at capacity"),
+		types.ErrorCodeBadResponseBody,
+		http.StatusServiceUnavailable,
+		types.ErrOptionWithSameChannelRetry(),
+	)
+
+	c := newPinRetryContext()
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	assert.True(t, shouldRetry(c, apiErr, 1))
+	assert.False(t, shouldRetry(c, apiErr, 0))
+
+	service.GetChannelConstraints(c).AddPin(dto.ChannelPin{
+		ChannelId: 1,
+		Source:    dto.PinSourceToken,
+		Rank:      dto.PinRankToken,
+		RetryMode: dto.PinRetrySingleAttempt,
+	})
+	assert.False(t, shouldRetry(c, apiErr, 1))
 }
 
 func TestSameChannelPinsMergeToStricterRetryMode(t *testing.T) {

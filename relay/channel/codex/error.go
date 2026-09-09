@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
@@ -46,7 +48,29 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response) *types.NewAPIEr
 		message = fmt.Sprintf("codex upstream error: status %d %s: %s", statusCode, statusText, message)
 	}
 
-	return types.NewOpenAIError(fmt.Errorf("%s", message), types.ErrorCodeBadResponseStatusCode, statusCode)
+	options := []types.NewAPIErrorOptions{}
+	if resp != nil {
+		if retryAfter := parseRetryAfterHeader(resp.Header.Get("Retry-After")); retryAfter > 0 {
+			options = append(options, types.ErrOptionWithRetryAfter(retryAfter))
+		}
+	}
+	return types.NewOpenAIError(fmt.Errorf("%s", message), types.ErrorCodeBadResponseStatusCode, statusCode, options...)
+}
+
+func parseRetryAfterHeader(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	if retryAt, err := http.ParseTime(value); err == nil {
+		if delay := time.Until(retryAt); delay > 0 {
+			return delay
+		}
+	}
+	return 0
 }
 
 func extractCodexErrorMessage(body []byte) string {

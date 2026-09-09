@@ -55,6 +55,11 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	if types.IsSkipRetryError(err) {
 		return false
 	}
+	// Request-scoped transient failures use the Responses cooldown path. They
+	// must not permanently disable a channel even when 5xx auto-ban rules are broad.
+	if types.IsSameChannelRetryError(err) {
+		return false
+	}
 	if operation_setting.ShouldDisableByStatusCode(err.StatusCode) {
 		return true
 	}

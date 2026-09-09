@@ -132,6 +132,9 @@ var QuotaRemindThreshold = 1000
 var PreConsumedQuota = 500
 
 var RetryTimes = 0
+var SameChannelRetryTimes = 5
+var ResponsesRetryMaxDurationSeconds = 60
+var ResponsesChannelCooldownSeconds = 30
 
 //var RootUserEmail = ""
 

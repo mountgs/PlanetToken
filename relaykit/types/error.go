@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 )
@@ -88,14 +89,17 @@ const (
 )
 
 type NewAPIError struct {
-	Err            error
-	RelayError     any
-	skipRetry      bool
-	recordErrorLog *bool
-	errorType      ErrorType
-	errorCode      ErrorCode
-	StatusCode     int
-	Metadata       json.RawMessage
+	Err              error
+	RelayError       any
+	skipRetry        bool
+	retrySameChannel bool
+	retryNextChannel bool
+	retryAfter       time.Duration
+	recordErrorLog   *bool
+	errorType        ErrorType
+	errorCode        ErrorCode
+	StatusCode       int
+	Metadata         json.RawMessage
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.
@@ -382,6 +386,46 @@ func ErrOptionWithSkipRetry() NewAPIErrorOptions {
 	return func(e *NewAPIError) {
 		e.skipRetry = true
 	}
+}
+
+// ErrOptionWithSameChannelRetry marks a request-scoped upstream failure that
+// is safe to replay on the selected credential before trying another channel.
+func ErrOptionWithSameChannelRetry() NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.retrySameChannel = true
+		e.retryNextChannel = true
+	}
+}
+
+// ErrOptionWithNextChannelRetry marks a channel-scoped failure that should
+// skip same-channel replay and proceed directly to channel failover.
+func ErrOptionWithNextChannelRetry() NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.retryNextChannel = true
+	}
+}
+
+func IsSameChannelRetryError(err *NewAPIError) bool {
+	return err != nil && err.retrySameChannel
+}
+
+func IsNextChannelRetryError(err *NewAPIError) bool {
+	return err != nil && err.retryNextChannel
+}
+
+func ErrOptionWithRetryAfter(delay time.Duration) NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		if delay > 0 {
+			e.retryAfter = delay
+		}
+	}
+}
+
+func GetRetryAfter(err *NewAPIError) time.Duration {
+	if err == nil {
+		return 0
+	}
+	return err.retryAfter
 }
 
 func ErrOptionWithNoRecordErrorLog() NewAPIErrorOptions {

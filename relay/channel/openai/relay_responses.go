@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -30,6 +31,12 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	err = common.Unmarshal(responseBody, &responsesResponse)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
+	if upstreamErr := service.ParseResponsesUpstreamError(
+		responseBody,
+		service.ParseResponsesRetryAfterHeader(resp.Header.Get("Retry-After")),
+	); upstreamErr != nil {
+		return nil, upstreamErr
 	}
 	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
@@ -76,6 +83,21 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	var responseTextBuilder strings.Builder
 	imageCounter := &relaycommon.ImageGenerationCallCounter{}
 	imageCommitted := false
+	type pendingEvent struct {
+		response dto.ResponsesStreamResponse
+		data     string
+	}
+	var pending []pendingEvent
+	pendingBytes := 0
+	semanticOutput := false
+	var streamAPIError *types.NewAPIError
+	flushPending := func() {
+		for _, event := range pending {
+			sendResponsesStreamData(c, event.response, event.data)
+		}
+		pending = nil
+		pendingBytes = 0
+	}
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -86,7 +108,36 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
-		sendResponsesStreamData(c, streamResponse, data)
+		if upstreamErr := service.ParseResponsesUpstreamError(
+			[]byte(data),
+			service.ParseResponsesRetryAfterHeader(resp.Header.Get("Retry-After")),
+		); upstreamErr != nil {
+			if !semanticOutput {
+				streamAPIError = upstreamErr
+				sr.Stop(upstreamErr)
+				return
+			}
+			sendResponsesStreamData(c, streamResponse, data)
+			if !imageCommitted {
+				imageCounter.Reset()
+				imageCounter.Commit(info)
+				imageCommitted = true
+			}
+			sr.Done()
+			return
+		}
+		startsSemanticOutput := service.ResponsesEventHasSemanticOutput([]byte(data))
+		if !semanticOutput && !startsSemanticOutput && pendingBytes+len(data) <= 1<<20 {
+			pending = append(pending, pendingEvent{response: streamResponse, data: data})
+			pendingBytes += len(data)
+		} else {
+			if !semanticOutput {
+				semanticOutput = true
+				c.Set(constant.ContextKeyResponsesSemanticOutput, true)
+				flushPending()
+			}
+			sendResponsesStreamData(c, streamResponse, data)
+		}
 		switch streamResponse.Type {
 		case "response.completed", "response.done":
 			if streamResponse.Response != nil {
@@ -138,6 +189,13 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 		}
 	})
+
+	if streamAPIError != nil {
+		if c.Writer.Written() {
+			c.Set(constant.ContextKeyResponsesStreamCommitted, true)
+		}
+		return nil, streamAPIError
+	}
 
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量

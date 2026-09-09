@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMemo, useRef } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
@@ -77,6 +77,9 @@ const createRoutingReliabilitySchema = (
   z
     .object({
       RetryTimes: z.coerce.number().min(0).max(10),
+      SameChannelRetryTimes: z.coerce.number().min(0).max(10),
+      ResponsesRetryMaxDurationSeconds: z.coerce.number().int().min(1).max(600),
+      ResponsesChannelCooldownSeconds: z.coerce.number().int().min(0).max(3600),
       ChannelDisableThreshold: numericString,
       AutomaticDisableChannelEnabled: z.boolean(),
       AutomaticEnableChannelEnabled: z.boolean(),
@@ -137,6 +140,9 @@ type RoutingReliabilityFormInput = z.input<RoutingReliabilitySchema>
 type RoutingReliabilitySectionProps = {
   defaultValues: {
     RetryTimes: number
+    SameChannelRetryTimes: number
+    ResponsesRetryMaxDurationSeconds: number
+    ResponsesChannelCooldownSeconds: number
     ChannelDisableThreshold: string
     AutomaticDisableChannelEnabled: boolean
     AutomaticEnableChannelEnabled: boolean
@@ -156,6 +162,9 @@ function normalizeLineEndings(value: string) {
 
 type NormalizedRoutingReliabilityValues = {
   RetryTimes: number
+  SameChannelRetryTimes: number
+  ResponsesRetryMaxDurationSeconds: number
+  ResponsesChannelCooldownSeconds: number
   ChannelDisableThreshold: string
   AutomaticDisableChannelEnabled: boolean
   AutomaticEnableChannelEnabled: boolean
@@ -179,6 +188,11 @@ const buildFormDefaults = (
   defaults: RoutingReliabilitySectionProps['defaultValues']
 ): RoutingReliabilityFormInput => ({
   RetryTimes: defaults.RetryTimes ?? 0,
+  SameChannelRetryTimes: defaults.SameChannelRetryTimes ?? 5,
+  ResponsesRetryMaxDurationSeconds:
+    defaults.ResponsesRetryMaxDurationSeconds ?? 60,
+  ResponsesChannelCooldownSeconds:
+    defaults.ResponsesChannelCooldownSeconds ?? 30,
   ChannelDisableThreshold: defaults.ChannelDisableThreshold ?? '',
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
@@ -204,6 +218,11 @@ const normalizeDefaults = (
   defaults: RoutingReliabilitySectionProps['defaultValues']
 ): NormalizedRoutingReliabilityValues => ({
   RetryTimes: defaults.RetryTimes ?? 0,
+  SameChannelRetryTimes: defaults.SameChannelRetryTimes ?? 5,
+  ResponsesRetryMaxDurationSeconds:
+    defaults.ResponsesRetryMaxDurationSeconds ?? 60,
+  ResponsesChannelCooldownSeconds:
+    defaults.ResponsesChannelCooldownSeconds ?? 30,
   ChannelDisableThreshold: (defaults.ChannelDisableThreshold ?? '').trim(),
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
@@ -231,6 +250,9 @@ const normalizeFormValues = (
   values: RoutingReliabilityFormValues
 ): NormalizedRoutingReliabilityValues => ({
   RetryTimes: values.RetryTimes,
+  SameChannelRetryTimes: values.SameChannelRetryTimes,
+  ResponsesRetryMaxDurationSeconds: values.ResponsesRetryMaxDurationSeconds,
+  ResponsesChannelCooldownSeconds: values.ResponsesChannelCooldownSeconds,
   ChannelDisableThreshold: values.ChannelDisableThreshold.trim(),
   AutomaticDisableChannelEnabled: values.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: values.AutomaticEnableChannelEnabled,
@@ -278,9 +300,19 @@ export function RoutingReliabilitySection({
 
   useResetForm(form, formDefaults)
 
-  const autoDisableStatusCodes = form.watch('AutomaticDisableStatusCodes')
-  const autoRetryStatusCodes = form.watch('AutomaticRetryStatusCodes')
-  const channelTestMode = form.watch('monitor_setting.channel_test_mode')
+  const autoDisableStatusCodes = useWatch({
+    control: form.control,
+    name: 'AutomaticDisableStatusCodes',
+  })
+  const autoRetryStatusCodes = useWatch({
+    control: form.control,
+    name: 'AutomaticRetryStatusCodes',
+  })
+  const retryTimes = useWatch({ control: form.control, name: 'RetryTimes' })
+  const channelTestMode = useWatch({
+    control: form.control,
+    name: 'monitor_setting.channel_test_mode',
+  })
   let channelTestModeDescription: string
   switch (channelTestMode) {
     case 'auto_ban_only':
@@ -389,6 +421,85 @@ export function RoutingReliabilitySection({
                             {t('Normalized:')} {autoRetryParsed.normalized}
                           </span>
                         )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='SameChannelRetryTimes'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Responses same-channel retries')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='0'
+                        max='10'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Retries transient Responses failures on the selected credential before channel failover (0-10).'
+                      )}{' '}
+                      {retryTimes === 0 && (
+                        <span className='text-amber-600 dark:text-amber-400'>
+                          {t(
+                            'Cross-channel retry is disabled because Retry Times is 0.'
+                          )}
+                        </span>
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='ResponsesRetryMaxDurationSeconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Responses retry budget')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='1'
+                        max='600'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Maximum time in seconds for starting additional Responses attempts (1-600).'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='ResponsesChannelCooldownSeconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Responses channel cooldown')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min='0'
+                        max='3600'
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Temporarily excludes a failed channel and model combination; 0 disables cooldown.'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

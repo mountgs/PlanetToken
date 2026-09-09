@@ -719,7 +719,14 @@ func RecordChannelAffinity(c *gin.Context, channelID int) {
 	if setting == nil || !setting.Enabled {
 		return
 	}
-	if setting.SwitchOnSuccess && c != nil {
+	if retrySucceeded, retryTracked := responsesRetryAffinityOutcome(c); retryTracked {
+		if !retrySucceeded {
+			return
+		}
+		if successChannelID := c.GetInt("channel_id"); successChannelID > 0 {
+			channelID = successChannelID
+		}
+	} else if setting.SwitchOnSuccess && c != nil {
 		if successChannelID := c.GetInt("channel_id"); successChannelID > 0 {
 			channelID = successChannelID
 		}

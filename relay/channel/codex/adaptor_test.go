@@ -11,12 +11,14 @@ import (
 	"net/textproto"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	appconstant "github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -361,6 +363,80 @@ func TestHandleResponsesStream_MarksNativeImageGenerationTool(t *testing.T) {
 	}
 }
 
+func TestHandleResponsesStream_CapacityFailureBeforeSemanticOutputIsRetryable(t *testing.T) {
+	oldStreamingTimeout := appconstant.StreamingTimeout
+	appconstant.StreamingTimeout = 30
+	defer func() { appconstant.StreamingTimeout = oldStreamingTimeout }()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := `data: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}` + "\n\n" +
+		`data: {"type":"response.failed","response":{"error":{"message":"Selected model is at capacity. Please try a different model."}}}` + "\n\n"
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+	info := &relaycommon.RelayInfo{DisablePing: true}
+
+	usage, apiErr := handleResponsesStream(c, resp, info)
+
+	require.Nil(t, usage)
+	require.NotNil(t, apiErr)
+	require.True(t, types.IsSameChannelRetryError(apiErr))
+	require.Equal(t, http.StatusServiceUnavailable, apiErr.StatusCode)
+	require.Empty(t, w.Body.String(), "lifecycle events must remain buffered before failover")
+}
+
+func TestHandleResponsesStream_CapacityFailureAfterSemanticOutputIsNotReplayable(t *testing.T) {
+	oldStreamingTimeout := appconstant.StreamingTimeout
+	appconstant.StreamingTimeout = 30
+	defer func() { appconstant.StreamingTimeout = oldStreamingTimeout }()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := `data: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}` + "\n\n" +
+		`data: {"type":"response.output_text.delta","delta":"hello"}` + "\n\n" +
+		`data: {"type":"response.failed","response":{"error":{"message":"Selected model is at capacity. Please try a different model.","code":"server_is_overloaded"}}}` + "\n\n"
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+	info := &relaycommon.RelayInfo{DisablePing: true}
+
+	usage, apiErr := handleResponsesStream(c, resp, info)
+
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	require.Contains(t, w.Body.String(), `"delta":"hello"`)
+	require.Contains(t, w.Body.String(), `"type":"server_error"`)
+	require.Contains(t, w.Body.String(), `"code":"server_error"`)
+	require.Equal(t, 1, strings.Count(w.Body.String(), `"type":"server_error"`))
+}
+
+func TestHandleResponsesNonStream_CapacityFailureSSEIsRetryable(t *testing.T) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := `data: {"type":"response.failed","response":{"error":{"message":"Selected model is at capacity. Please try a different model."}}}` + "\n\n"
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+
+	usage, apiErr := handleResponsesNonStream(c, resp, &relaycommon.RelayInfo{})
+
+	require.Nil(t, usage)
+	require.NotNil(t, apiErr)
+	require.True(t, types.IsSameChannelRetryError(apiErr))
+	require.Equal(t, http.StatusServiceUnavailable, apiErr.StatusCode)
+	require.Empty(t, w.Body.String())
+}
+
 func TestRelayErrorHandlerPlainText(t *testing.T) {
 	resp := &http.Response{
 		StatusCode: http.StatusInternalServerError,
@@ -378,6 +454,28 @@ func TestRelayErrorHandlerPlainText(t *testing.T) {
 	if !strings.Contains(err.Error(), "error upstream broke") {
 		t.Fatalf("plain text body was not preserved: %s", err.Error())
 	}
+}
+
+func TestRelayErrorHandlerPreservesRetryAfterSeconds(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Status:     "429 Too Many Requests",
+		Header:     http.Header{"Retry-After": []string{"7"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"capacity"}}`)),
+	}
+
+	err := RelayErrorHandler(context.Background(), resp)
+
+	require.NotNil(t, err)
+	assert.Equal(t, 7*time.Second, types.GetRetryAfter(err))
+}
+
+func TestParseRetryAfterHeaderHTTPDate(t *testing.T) {
+	retryAt := time.Now().Add(10 * time.Second).UTC().Truncate(time.Second)
+	delay := parseRetryAfterHeader(retryAt.Format(http.TimeFormat))
+
+	assert.Greater(t, delay, 8*time.Second)
+	assert.LessOrEqual(t, delay, 10*time.Second)
 }
 
 func TestBuildCodexImageGenerationResponsesRequest(t *testing.T) {

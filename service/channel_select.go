@@ -36,12 +36,55 @@ func AppendTaskPluginIdentityFilter(c *gin.Context, pluginKey string) {
 }
 
 type RetryParam struct {
-	Ctx          *gin.Context
-	TokenGroup   string
-	ModelName    string
-	RequestPath  string
-	Retry        *int
-	resetNextTry bool
+	Ctx                *gin.Context
+	TokenGroup         string
+	ModelName          string
+	RequestPath        string
+	Retry              *int
+	ExcludedChannelIDs map[int]struct{}
+	resetNextTry       bool
+}
+
+func (p *RetryParam) ExcludeChannel(channelID int) {
+	if p == nil || channelID <= 0 {
+		return
+	}
+	if p.ExcludedChannelIDs == nil {
+		p.ExcludedChannelIDs = make(map[int]struct{})
+	}
+	p.ExcludedChannelIDs[channelID] = struct{}{}
+}
+
+func (p *RetryParam) selectionFilters() []dto.ChannelFilter {
+	filters := append([]dto.ChannelFilter(nil), GetChannelConstraints(p.Ctx).Filters...)
+	if len(p.ExcludedChannelIDs) == 0 {
+		return filters
+	}
+	excluded := make([]int, 0, len(p.ExcludedChannelIDs))
+	for channelID := range p.ExcludedChannelIDs {
+		excluded = append(excluded, channelID)
+	}
+	return append(filters, dto.ChannelFilter{Kind: dto.FilterExcludedChannels, ExcludedChannelIDs: excluded})
+}
+
+func selectChannelForRetry(param *RetryParam, group string, retry int) (*model.Channel, error) {
+	for {
+		selectionRetry := retry
+		if IsResponsesRetryRequestPath(param.RequestPath) && len(param.ExcludedChannelIDs) > 0 {
+			selectionRetry -= len(param.ExcludedChannelIDs)
+			if selectionRetry < 0 {
+				selectionRetry = 0
+			}
+		}
+		channel, err := model.GetRandomSatisfiedChannel(group, param.ModelName, selectionRetry, param.selectionFilters())
+		if err != nil || channel == nil || !IsResponsesRetryRequestPath(param.RequestPath) {
+			return channel, err
+		}
+		if !IsResponsesChannelCooling(channel.Id, param.ModelName) {
+			return channel, nil
+		}
+		param.ExcludeChannel(channel.Id)
+	}
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -110,7 +153,6 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
-	filters := GetChannelConstraints(param.Ctx).Filters
 
 	if param.TokenGroup == "auto" {
 		autoGroups := GetRequestAutoGroups(param.Ctx, userGroup)
@@ -141,12 +183,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannel(
-				autoGroup,
-				param.ModelName,
-				priorityRetry,
-				filters,
-			)
+			channel, _ = selectChannelForRetry(param, autoGroup, priorityRetry)
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
@@ -184,12 +221,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannel(
-			param.TokenGroup,
-			param.ModelName,
-			param.GetRetry(),
-			filters,
-		)
+		channel, err = selectChannelForRetry(param, param.TokenGroup, param.GetRetry())
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}

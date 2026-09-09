@@ -50,6 +50,16 @@ func TestFilterCandidateIDs(t *testing.T) {
 		wantEmpty dto.ChannelFilterKind
 	}{
 		{
+			name:      "excluded channels are removed before other filters",
+			ids:       []int{900003, 900010},
+			modelName: "gpt-4",
+			filters: []dto.ChannelFilter{{
+				Kind:               dto.FilterExcludedChannels,
+				ExcludedChannelIDs: []int{900003},
+			}},
+			wantKept: []int{900010},
+		},
+		{
 			name:      "identity keeps matching type-59 key",
 			ids:       []int{900001, 900002},
 			modelName: "shared",
@@ -193,6 +203,13 @@ func TestChannelSatisfiesFilters(t *testing.T) {
 	ok, kind := ChannelSatisfiesFilters(nil, "gpt-4", nil)
 	assert.False(t, ok)
 	assert.Equal(t, dto.ChannelFilterKind(""), kind)
+
+	ok, kind = ChannelSatisfiesFilters(ordinary, "gpt-4", []dto.ChannelFilter{{
+		Kind:               dto.FilterExcludedChannels,
+		ExcludedChannelIDs: []int{ordinary.Id},
+	}})
+	assert.False(t, ok)
+	assert.Equal(t, dto.FilterExcludedChannels, kind)
 
 	ok, kind = ChannelSatisfiesFilters(alpha, "shared", identityFilters("alpha", nil))
 	require.True(t, ok)

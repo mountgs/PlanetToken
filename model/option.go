@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -164,6 +165,9 @@ func InitOptionMap() {
 	//common.OptionMap["ChatLink2"] = common.ChatLink2
 	common.OptionMap["QuotaPerUnit"] = strconv.FormatFloat(common.QuotaPerUnit, 'f', -1, 64)
 	common.OptionMap["RetryTimes"] = strconv.Itoa(common.RetryTimes)
+	common.OptionMap["SameChannelRetryTimes"] = strconv.Itoa(common.SameChannelRetryTimes)
+	common.OptionMap["ResponsesRetryMaxDurationSeconds"] = strconv.Itoa(common.ResponsesRetryMaxDurationSeconds)
+	common.OptionMap["ResponsesChannelCooldownSeconds"] = strconv.Itoa(common.ResponsesChannelCooldownSeconds)
 	common.OptionMap["DataExportInterval"] = strconv.Itoa(common.DataExportInterval)
 	common.OptionMap["DataExportDefaultTime"] = common.DataExportDefaultTime
 	common.OptionMap["DefaultCollapseSidebar"] = strconv.FormatBool(common.DefaultCollapseSidebar)
@@ -222,6 +226,21 @@ func validateOptionValue(key string, value string) error {
 	}
 	if key == "MaxTokenAutoGroups" {
 		return setting.ValidateMaxTokenAutoGroups(value)
+	}
+	var minValue, maxValue int
+	switch key {
+	case "SameChannelRetryTimes":
+		minValue, maxValue = 0, 10
+	case "ResponsesRetryMaxDurationSeconds":
+		minValue, maxValue = 1, 600
+	case "ResponsesChannelCooldownSeconds":
+		minValue, maxValue = 0, 3600
+	default:
+		return nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < minValue || parsed > maxValue {
+		return fmt.Errorf("%s must be an integer between %d and %d", key, minValue, maxValue)
 	}
 	return nil
 }
@@ -569,6 +588,12 @@ func updateOptionMap(key string, value string) (err error) {
 		err = setting.UpdateModelRequestRateLimitGroupByJSONString(value)
 	case "RetryTimes":
 		common.RetryTimes, _ = strconv.Atoi(value)
+	case "SameChannelRetryTimes":
+		common.SameChannelRetryTimes, _ = strconv.Atoi(value)
+	case "ResponsesRetryMaxDurationSeconds":
+		common.ResponsesRetryMaxDurationSeconds, _ = strconv.Atoi(value)
+	case "ResponsesChannelCooldownSeconds":
+		common.ResponsesChannelCooldownSeconds, _ = strconv.Atoi(value)
 	case "DataExportInterval":
 		common.DataExportInterval, _ = strconv.Atoi(value)
 	case "DataExportDefaultTime":

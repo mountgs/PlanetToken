@@ -8,8 +8,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayhelper "github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -34,7 +36,10 @@ func handleResponsesNonStream(c *gin.Context, resp *http.Response, info *relayco
 		return writeResponsesJSONBody(c, resp, info, responseBody)
 	}
 
-	responseJSON, usage, newAPIError := collectCompletedResponseFromSSE(responseBody)
+	responseJSON, usage, newAPIError := collectCompletedResponseFromSSE(
+		responseBody,
+		parseRetryAfterHeader(resp.Header.Get("Retry-After")),
+	)
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
@@ -57,14 +62,56 @@ func handleResponsesStream(c *gin.Context, resp *http.Response, info *relaycommo
 
 	usage := &dto.Usage{}
 	var responseTextBuilder strings.Builder
+	type pendingEvent struct {
+		eventType string
+		data      string
+	}
+	var pending []pendingEvent
+	pendingBytes := 0
+	semanticOutput := false
+	terminalEventSeen := false
+	var streamAPIError *types.NewAPIError
+	flushPending := func() {
+		for _, event := range pending {
+			writeResponsesStreamPayload(c, event.eventType, event.data)
+		}
+		pending = nil
+		pendingBytes = 0
+	}
 
 	relayhelper.StreamScannerHandler(c, resp, info, func(data string, sr *relayhelper.StreamResult) {
 		payload := gjson.Parse(data)
 		eventType := payload.Get("type").String()
-		writeResponsesStreamPayload(c, eventType, data)
+		if upstreamErr := parseCodexResponsesUpstreamError([]byte(data)); upstreamErr != nil {
+			if !semanticOutput {
+				streamAPIError = upstreamErr.toNewAPIError(parseRetryAfterHeader(resp.Header.Get("Retry-After")))
+				sr.Stop(streamAPIError)
+				return
+			}
+			sr.Error(upstreamErr)
+			flushPending()
+			writeResponsesStreamPayload(c, eventType, normalizeResponsesTransientFailure(data, upstreamErr))
+			terminalEventSeen = true
+			sr.Done()
+			return
+		}
+
+		startsSemanticOutput := responsesEventHasSemanticOutput(payload)
+		if !semanticOutput && !startsSemanticOutput && pendingBytes+len(data) <= maxResponsesPendingBytes {
+			pending = append(pending, pendingEvent{eventType: eventType, data: data})
+			pendingBytes += len(data)
+		} else {
+			if !semanticOutput {
+				semanticOutput = true
+				c.Set(constant.ContextKeyResponsesSemanticOutput, true)
+				flushPending()
+			}
+			writeResponsesStreamPayload(c, eventType, data)
+		}
 
 		switch eventType {
 		case "response.completed":
+			terminalEventSeen = true
 			response := payload.Get("response")
 			if response.Exists() && response.IsObject() {
 				mergeResponseUsage(usage, usageFromResponseGJSON(response))
@@ -87,6 +134,37 @@ func handleResponsesStream(c *gin.Context, resp *http.Response, info *relaycommo
 			}
 		}
 	})
+
+	if streamAPIError != nil {
+		if c.Writer.Written() {
+			c.Set(constant.ContextKeyResponsesStreamCommitted, true)
+		}
+		return nil, streamAPIError
+	}
+	if !terminalEventSeen && c.Request.Context().Err() == nil {
+		unexpectedEnd := fmt.Errorf("codex stream ended before response.completed")
+		if !semanticOutput {
+			if c.Writer.Written() {
+				c.Set(constant.ContextKeyResponsesStreamCommitted, true)
+			}
+			return nil, types.NewOpenAIError(
+				unexpectedEnd,
+				types.ErrorCodeBadResponseBody,
+				http.StatusServiceUnavailable,
+				types.ErrOptionWithSameChannelRetry(),
+			)
+		}
+		if info.StreamStatus != nil {
+			info.StreamStatus.RecordError(unexpectedEnd.Error())
+		}
+		writeResponsesStreamPayload(c, "error", normalizeResponsesTransientFailure(
+			`{"type":"error","error":{"message":"upstream stream ended unexpectedly"}}`,
+			&codexResponsesUpstreamError{
+				message:          "upstream stream ended unexpectedly",
+				retryNextChannel: true,
+			},
+		))
+	}
 
 	if usage.CompletionTokens == 0 {
 		tempStr := responseTextBuilder.String()
@@ -159,7 +237,7 @@ func writeResponsesJSONBody(c *gin.Context, resp *http.Response, info *relaycomm
 	return usage, nil
 }
 
-func collectCompletedResponseFromSSE(body []byte) ([]byte, *dto.Usage, *types.NewAPIError) {
+func collectCompletedResponseFromSSE(body []byte, retryAfter time.Duration) ([]byte, *dto.Usage, *types.NewAPIError) {
 	scanner := bufio.NewScanner(bytes.NewReader(body))
 	scanner.Buffer(make([]byte, 64<<10), 64<<20)
 
@@ -203,7 +281,10 @@ func collectCompletedResponseFromSSE(body []byte) ([]byte, *dto.Usage, *types.Ne
 			usage := usageFromResponseGJSON(gjson.ParseBytes(responseRaw))
 			mergeResponseUsage(usage, usageFromCodexToolUsageImageGen(payload))
 			return responseRaw, usage, nil
-		case "response.error", "response.failed":
+		case "response.error", "response.failed", "error":
+			if upstreamErr := parseCodexResponsesUpstreamError(payload); upstreamErr != nil {
+				return nil, nil, upstreamErr.toNewAPIError(retryAfter)
+			}
 			message := extractCodexErrorMessage(payload)
 			if message == "" {
 				message = strings.TrimSpace(string(payload))

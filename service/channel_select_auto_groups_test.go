@@ -1,14 +1,19 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
@@ -126,4 +131,88 @@ func TestCacheGetRandomSatisfiedChannelUsesTokenAutoGroupsWhenGlobalAutoIsEmpty(
 	assert.Equal(t, 2102, second.Id)
 	assert.Equal(t, "default", selectedGroup)
 	assert.Equal(t, "default", common.GetContextKeyString(ctx, constant.ContextKeyAutoGroup))
+}
+
+func TestCacheGetRandomSatisfiedChannelExcludesFailedResponsesChannel(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	const modelName = "responses-retry-model"
+	createChannelSelectAutoGroupsChannel(t, db, 2201, "default", modelName)
+	createChannelSelectAutoGroupsChannel(t, db, 2202, "default", modelName)
+	model.InitChannelCache()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	param := &RetryParam{
+		Ctx:                ctx,
+		TokenGroup:         "default",
+		ModelName:          modelName,
+		RequestPath:        "/v1/responses",
+		Retry:              common.GetPointer(0),
+		ExcludedChannelIDs: map[int]struct{}{2201: {}},
+	}
+
+	selected, _, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	assert.Equal(t, 2202, selected.Id)
+}
+
+func TestCacheGetRandomSatisfiedChannelSelectsHighestRemainingResponsesPriority(t *testing.T) {
+	db := setupChannelSelectAutoGroupsTest(t)
+	const modelName = "responses-priority-retry-model"
+	createChannelSelectAutoGroupsChannel(t, db, 2211, "default", modelName)
+	createChannelSelectAutoGroupsChannel(t, db, 2212, "default", modelName)
+	createChannelSelectAutoGroupsChannel(t, db, 2213, "default", modelName)
+	for channelID, priority := range map[int]int64{2211: 100, 2212: 90, 2213: 0} {
+		require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", channelID).Update("priority", priority).Error)
+		require.NoError(t, db.Model(&model.Ability{}).Where("channel_id = ?", channelID).Update("priority", priority).Error)
+	}
+	model.InitChannelCache()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	param := &RetryParam{
+		Ctx:                ctx,
+		TokenGroup:         "default",
+		ModelName:          modelName,
+		RequestPath:        "/v1/responses",
+		Retry:              common.GetPointer(1),
+		ExcludedChannelIDs: map[int]struct{}{2211: {}},
+	}
+
+	selected, _, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, selected)
+	assert.Equal(t, 2212, selected.Id)
+}
+
+func TestResponsesRetryClassifiesTransientAndDeterministicErrors(t *testing.T) {
+	transient := types.NewOpenAIError(errors.New("overloaded"), types.ErrorCodeBadResponseStatusCode, http.StatusServiceUnavailable)
+	auth := types.NewOpenAIError(errors.New("auth"), types.ErrorCodeBadResponseStatusCode, http.StatusUnauthorized)
+	credentialFailure := types.NewOpenAIError(
+		errors.New("upstream credential disabled"),
+		types.ErrorCodeBadResponseStatusCode,
+		http.StatusBadGateway,
+		types.ErrOptionWithNextChannelRetry(),
+	)
+	deterministic := types.NewOpenAIError(errors.New("invalid"), types.ErrorCodeBadRequestBody, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+
+	assert.True(t, ShouldRetryResponsesOnSameChannel(transient))
+	assert.True(t, ShouldRetryResponsesOnNextChannel(transient))
+	assert.False(t, ShouldRetryResponsesOnSameChannel(auth))
+	assert.True(t, ShouldRetryResponsesOnNextChannel(auth))
+	assert.False(t, ShouldRetryResponsesOnSameChannel(credentialFailure))
+	assert.True(t, ShouldRetryResponsesOnNextChannel(credentialFailure))
+	assert.False(t, ShouldRetryResponsesOnSameChannel(deterministic))
+	assert.False(t, ShouldRetryResponsesOnNextChannel(deterministic))
+}
+
+func TestResponsesRetryWaitStopsWhenRetryAfterExceedsBudget(t *testing.T) {
+	state := &ResponsesRetryState{deadline: time.Now().Add(20 * time.Millisecond)}
+	started := time.Now()
+
+	retried := state.Wait(context.Background(), 1, time.Second)
+
+	assert.False(t, retried)
+	assert.Less(t, time.Since(started), 100*time.Millisecond)
 }
