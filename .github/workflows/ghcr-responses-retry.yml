@@ -1,0 +1,117 @@
+name: Publish Responses retry image to GHCR
+
+on:
+  push:
+    branches:
+      - codex/responses-retry-failover
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ghcr-responses-retry-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/mountgs/planet-token
+
+jobs:
+  build:
+    name: Build and push ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Resolve image tags
+        id: version
+        shell: bash
+        run: |
+          SHORT_SHA="${GITHUB_SHA::8}"
+          VERSION="responses-retry-$(date -u +'%Y%m%d')-${SHORT_SHA}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "${VERSION}" > VERSION
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push architecture image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:responses-retry-${{ matrix.arch }}
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=responses-retry-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=responses-retry-${{ matrix.arch }}
+          provenance: mode=max
+          sbom: true
+
+  manifest:
+    name: Publish multi-architecture manifests
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Resolve image tag
+        id: version
+        shell: bash
+        run: |
+          SHORT_SHA="${GITHUB_SHA::8}"
+          echo "version=responses-retry-$(date -u +'%Y%m%d')-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish stable manifest
+        run: |
+          docker buildx imagetools create \
+            -t "${IMAGE_NAME}:responses-retry" \
+            "${IMAGE_NAME}:responses-retry-amd64" \
+            "${IMAGE_NAME}:responses-retry-arm64"
+
+      - name: Publish versioned manifest
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker buildx imagetools create \
+            -t "${IMAGE_NAME}:${VERSION}" \
+            "${IMAGE_NAME}:${VERSION}-amd64" \
+            "${IMAGE_NAME}:${VERSION}-arm64"
+
+      - name: Verify published manifests
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker buildx imagetools inspect "${IMAGE_NAME}:responses-retry"
+          docker buildx imagetools inspect "${IMAGE_NAME}:${VERSION}"
