@@ -228,6 +228,10 @@ export const STATIC_I18N_KEYS = [
 
   // Models section-registry nav (dynamic titleKey)
   'Grok',
+  'Codex',
+  'Codex Settings',
+  'Images main model',
+  'Responses main model for Codex Image 2. ChatGPT-signed Codex no longer supports gpt-5.4-mini; default is gpt-5.6-luna. gpt-image-2 remains the tool model.',
 
   // Channel Affinity section
   'Channel Affinity',

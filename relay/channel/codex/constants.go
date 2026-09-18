@@ -1,9 +1,8 @@
 package codex
 
 const (
-	CodexImageModel        = "gpt-image-2"
-	defaultImagesMainModel = "gpt-5.4-mini"
-	imageGenerationTool    = "image_generation"
+	CodexImageModel     = "gpt-image-2"
+	imageGenerationTool = "image_generation"
 )
 
 var ModelList = []string{

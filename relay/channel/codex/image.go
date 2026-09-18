@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
@@ -122,7 +123,7 @@ func buildCodexImageResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo
 	}
 
 	return dto.OpenAIResponsesRequest{
-		Model:             defaultImagesMainModel,
+		Model:             model_setting.GetCodexImagesMainModel(),
 		Input:             inputRaw,
 		Instructions:      json.RawMessage(`""`),
 		Include:           includeRaw,

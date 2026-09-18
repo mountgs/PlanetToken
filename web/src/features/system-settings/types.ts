@@ -209,6 +209,7 @@ export type ModelSettings = {
   'claude.thinking_adapter_budget_tokens_percentage': number
   'grok.violation_deduction_enabled': boolean
   'grok.violation_deduction_amount': number
+  'codex.images_main_model': string
   ModelPrice: string
   ModelRatio: string
   CacheRatio: string

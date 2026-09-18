@@ -19,6 +19,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -493,7 +494,7 @@ func TestBuildCodexImageGenerationResponsesRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildCodexImageResponsesRequest returned error: %v", err)
 	}
-	if request.Model != defaultImagesMainModel {
+	if request.Model != model_setting.DefaultCodexImagesMainModel {
 		t.Fatalf("unexpected main model: %s", request.Model)
 	}
 	if request.Stream == nil || !*request.Stream {
@@ -506,6 +507,30 @@ func TestBuildCodexImageGenerationResponsesRequest(t *testing.T) {
 	}
 	if tools[0]["type"] != "image_generation" || tools[0]["action"] != "generate" || tools[0]["model"] != CodexImageModel {
 		t.Fatalf("unexpected image tool: %#v", tools[0])
+	}
+}
+
+func TestBuildCodexImageGenerationResponsesRequestUsesConfiguredMainModel(t *testing.T) {
+	original := model_setting.GetCodexSettings().ImagesMainModel
+	model_setting.GetCodexSettings().ImagesMainModel = "gpt-5.6-terra"
+	t.Cleanup(func() {
+		model_setting.GetCodexSettings().ImagesMainModel = original
+	})
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	request, err := buildCodexImageResponsesRequest(c, &relaycommon.RelayInfo{
+		RelayMode: relayconstant.RelayModeImagesGenerations,
+	}, dto.ImageRequest{
+		Model:  CodexImageModel,
+		Prompt: "中文海报",
+	})
+	if err != nil {
+		t.Fatalf("buildCodexImageResponsesRequest returned error: %v", err)
+	}
+	if request.Model != "gpt-5.6-terra" {
+		t.Fatalf("unexpected main model: %s", request.Model)
 	}
 }
 
