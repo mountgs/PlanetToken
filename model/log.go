@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -117,8 +118,36 @@ func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
 		logs[i].Other = formatLogOtherJSON(logs[i].Other, logOtherVisibilityUser)
+		// Model mapping is an internal routing detail. Keep it available to
+		// admins, but do not expose it through self/token log projections.
+		logs[i].Other = removeUserModelMappingFields(logs[i].Other)
 	}
 	assignDisplayLogIds(logs, startIdx)
+}
+
+func removeUserModelMappingFields(value string) string {
+	if value == "" {
+		return value
+	}
+	var values map[string]json.RawMessage
+	if err := common.UnmarshalJsonStr(value, &values); err != nil {
+		return value
+	}
+	changed := false
+	for _, key := range []string{"is_model_mapped", "upstream_model_name"} {
+		if _, exists := values[key]; exists {
+			delete(values, key)
+			changed = true
+		}
+	}
+	if !changed {
+		return value
+	}
+	formatted, err := common.Marshal(values)
+	if err != nil {
+		return "{}"
+	}
+	return string(formatted)
 }
 
 // FormatAdminLogs removes root-only diagnostics while retaining operational

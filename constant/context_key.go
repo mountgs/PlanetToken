@@ -17,6 +17,12 @@ const (
 	ContextKeyOriginalModel    ContextKey = "original_model"
 	ContextKeyRequestStartTime ContextKey = "request_start_time"
 
+	// ContextKeyRewriteOpenAICompatibleModel enables rewriting OpenAI-shaped
+	// JSON `model` fields back to the client's requested model before the
+	// payload is written to the user. Native Claude/Gemini responses leave
+	// this unset so their model names are not rewritten.
+	ContextKeyRewriteOpenAICompatibleModel ContextKey = "rewrite_openai_compatible_model"
+
 	/* token related keys */
 	ContextKeyTokenUnlimited         ContextKey = "token_unlimited_quota"
 	ContextKeyTokenKey               ContextKey = "token_key"

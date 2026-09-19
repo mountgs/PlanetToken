@@ -25,6 +25,7 @@ export {
   parseLogOther,
   getTimeColor,
   formatModelName,
+  shouldRevealLogModelMapping,
   formatDuration,
   getParamOverrideActionLabel,
   parseAuditLine,

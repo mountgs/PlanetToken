@@ -296,7 +296,7 @@
       "name": "流式图片按次计费与回归验收",
       "description": "固定价格按 ModelPrice*n*GroupRatio 预扣；正常完成按实际 completed 结算；断连按请求 n 保守计费；完成定向、全量和生产 E2E 证据",
       "dependencies": ["feat-codex-image-stream-005"],
-      "status": "in-progress",
+      "status": "blocked",
       "evidence": "2026-08-13: 固定价计费、完成数结算和断连保护的代码与自动化测试已完成；生产 Nginx/CDN 验收尚未执行。",
       "verification": {
         "automated": [
@@ -309,6 +309,49 @@
           "核对 Nginx 日志无 upstream timed out"
         ],
         "acceptance": "心跳和 partial 不计次；正常完成按实际 completed；断连保留请求 n；代码验证通过且生产 E2E 证据已记录"
+      }
+    },
+    {
+      "id": "feat-codex-image-stream-007",
+      "name": "Image 2 上游错误可解释透传",
+      "description": "参考 Sub2API 的错误建模，为 Codex Image 2 白名单提取并脱敏透传 message/type/code/param；识别 response.failed、response.error、response.incomplete 和无图拒绝文本，同时保持既有计费与渠道重试语义。",
+      "dependencies": ["feat-codex-image-stream-005"],
+      "status": "in-progress",
+      "evidence": "2026-08-13: 结构化错误、脱敏、content_filter 分类和 completed 无图拒绝文本回归测试通过；init.sh 在当前 Windows Bash 环境因 PATH 未配置 go 而阻断。",
+      "verification": {
+        "automated": [
+          "go test ./relay/channel/codex -run 'StructuredError|Incomplete|Refusal|NoOutput'",
+          "go test ./relay/channel/codex ./relay ./controller",
+          "./init.sh"
+        ],
+        "manual": [
+          "使用明确触发内容策略的测试请求，确认客户端收到脱敏后的官方错误文本和错误码",
+          "确认错误响应不包含令牌、OAuth 字段、内部 URL、上游账号或完整响应体"
+        ],
+        "acceptance": "只透传脱敏且限长的 message/type/code/param；content_filter、moderation 和明确拒绝为 400 且不重试；临时失败为 502 并仅使用既有渠道重试；partial 后发送结构化 SSE error 和 [DONE]；无原因时保留通用兜底；不改变计费或新增同渠道重试。"
+      }
+    },
+    {
+      "id": "feat-codex-008",
+      "name": "Responses 输出前瞬时失败重试与渠道故障转移",
+      "description": "参考 sub2api，在 Codex Responses HTTP 200 SSE 的语义输出前识别 capacity 等瞬时失败；同渠道重试五次后排除并切换渠道，支持请求总时限、模型级渠道冷却、亲和迁移和可审计重试链。",
+      "dependencies": ["feat-codex-001"],
+      "status": "done",
+      "evidence": "2026-09-08: 已实现 1+5 同渠道指数退避、Retry-After、60 秒预算、失败渠道排除与跨渠道故障转移；Codex Responses 流式/非流式 HTTP 200 SSE capacity 识别、语义输出边界、Redis+本地冷却、亲和迁移、单次结算和重试审计链均有定向测试。Windows Go 与 WSL 挂载路径定向测试、relaykit 全量测试、前端生产构建通过。",
+      "verification": {
+        "automated": [
+          "go test ./relay/channel/codex -run 'CapacityFailure|RetryAfter|RelayErrorHandler'",
+          "go test ./service -run 'Responses(ChannelCooldown|Retry)|CacheGetRandomSatisfiedChannelExcludesFailedResponsesChannel'",
+          "go test ./controller -run 'ShouldRetryResponsesTransient'",
+          "cd relaykit && GOWORK=off go test ./...",
+          "cd web && pnpm build"
+        ],
+        "manual": [
+          "模拟 Selected model is at capacity，确认当前渠道执行 1+5 后切换且失败渠道在本请求内不再入选",
+          "确认已有文本或工具输出后不透明重放，客户端收到可重试终止错误",
+          "多实例启用 Redis 时确认渠道+模型冷却状态共享"
+        ],
+        "acceptance": "流式和非流式 Responses 的输出前瞬时错误可安全重试；输出后不重放；同渠道、跨渠道、总时限、冷却、亲和、计费和日志行为符合已确认设计。"
       }
     }
   ]

@@ -89,6 +89,7 @@ func ResponseChunkData(c *gin.Context, resp dto.ResponsesStreamResponse, data st
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
 	}
 
+	data = common.RewriteOutgoingOpenAICompatibleModelString(c, data)
 	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
 	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s", data)})
 	return FlushWriter(c)
@@ -103,6 +104,7 @@ func StringData(c *gin.Context, str string) error {
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
 	}
 
+	str = common.RewriteOutgoingOpenAICompatibleModelString(c, str)
 	c.Render(-1, common.CustomEvent{Data: "data: " + str})
 	return FlushWriter(c)
 }
@@ -133,6 +135,19 @@ func ObjectData(c *gin.Context, object interface{}) error {
 	return StringData(c, string(jsonData))
 }
 
+func WriteJSON(c *gin.Context, status int, object interface{}) error {
+	if c == nil || c.Writer == nil {
+		return errors.New("context or writer is nil")
+	}
+	jsonData, err := common.Marshal(object)
+	if err != nil {
+		return fmt.Errorf("error marshalling object: %w", err)
+	}
+	jsonData = common.RewriteOutgoingOpenAICompatibleModel(c, jsonData)
+	c.Data(status, "application/json; charset=utf-8", jsonData)
+	return nil
+}
+
 func Done(c *gin.Context) {
 	_ = StringData(c, "[DONE]")
 }
@@ -142,6 +157,7 @@ func WssString(c *gin.Context, ws *websocket.Conn, str string) error {
 		logger.LogError(c, "websocket connection is nil")
 		return errors.New("websocket connection is nil")
 	}
+	str = common.RewriteOutgoingOpenAICompatibleModelString(c, str)
 	//common.LogInfo(c, fmt.Sprintf("sending message: %s", str))
 	return ws.WriteMessage(1, []byte(str))
 }
@@ -151,6 +167,7 @@ func WssObject(c *gin.Context, ws *websocket.Conn, object interface{}) error {
 	if err != nil {
 		return fmt.Errorf("error marshalling object: %w", err)
 	}
+	jsonData = common.RewriteOutgoingOpenAICompatibleModel(c, jsonData)
 	if ws == nil {
 		logger.LogError(c, "websocket connection is nil")
 		return errors.New("websocket connection is nil")

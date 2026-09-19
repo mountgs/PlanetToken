@@ -232,24 +232,39 @@ export function getResponseTimeColor(
 }
 
 /**
- * Format model name with mapping indicator
+ * Mapping (request model to upstream model) is admin-global-view only.
  */
-export function formatModelName(log: UsageLog): {
+export function shouldRevealLogModelMapping(
+  isAdminView: boolean,
+  other: LogOtherData | null | undefined
+): boolean {
+  return !!(
+    isAdminView &&
+    other?.is_model_mapped &&
+    other.upstream_model_name &&
+    other.upstream_model_name !== ''
+  )
+}
+
+/**
+ * Format model name with mapping indicator.
+ * Mapping is admin-global-view only.
+ */
+export function formatModelName(
+  log: UsageLog,
+  options?: { revealMapping?: boolean }
+): {
   name: string
   isMapped: boolean
   actualModel?: string
 } {
   const other = parseLogOther(log.other)
-  const isMapped = !!(
-    other?.is_model_mapped &&
-    other?.upstream_model_name &&
-    other.upstream_model_name !== ''
-  )
+  const isMapped = shouldRevealLogModelMapping(!!options?.revealMapping, other)
 
   return {
     name: log.model_name,
     isMapped,
-    actualModel: isMapped ? other.upstream_model_name : undefined,
+    actualModel: isMapped ? other?.upstream_model_name : undefined,
   }
 }
 

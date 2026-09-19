@@ -31,6 +31,10 @@ services:
       - REDIS_CONN_STRING=redis://redis
       - TZ=Asia/Shanghai
       - BATCH_UPDATE_ENABLED=true
+      # Optional outbound proxy for WSL/Docker hosts that cannot reach upstream APIs directly.
+      - HTTP_PROXY=${LOCAL_HTTP_PROXY:-}
+      - HTTPS_PROXY=${LOCAL_HTTP_PROXY:-}
+      - NO_PROXY=localhost,127.0.0.1,postgres,redis,new-api
       # Local HTTP dev mode: keep Secure=false and leave TRUSTED_URL unset. This disables the refresh/logout OriginGuard so the :5173 -> :3000 dev proxy works.
       - SESSION_COOKIE_SECURE=false
       # For HTTPS only: set Secure=true and list every exact trusted HTTPS browser Origin. This does not configure relay CORS.

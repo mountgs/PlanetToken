@@ -615,7 +615,7 @@ export function useCommonLogsColumns(
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
-        const modelInfo = formatModelName(log)
+        const modelInfo = formatModelName(log, { revealMapping: isAdmin })
 
         return (
           <div className='flex w-fit flex-col gap-0.5'>

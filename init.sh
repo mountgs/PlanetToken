@@ -21,6 +21,9 @@ trap cleanup EXIT
 echo "=== go test ./... ==="
 go test ./...
 
+echo "=== usage log visibility regression ==="
+go test ./model ./controller -run 'TestFormat(User|Admin)Logs|TestTaskLogDTOHidesMappedModelFromUsers' -count=1
+
 echo "=== cd web && bun run typecheck ==="
 (cd web && bun run typecheck)
 

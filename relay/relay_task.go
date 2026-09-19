@@ -432,6 +432,7 @@ func RelayTaskFetch(c *gin.Context, relayMode int) (taskResp *dto.TaskError) {
 		respBody = []byte("{\"code\":\"success\",\"data\":null}")
 	}
 
+	respBody = common.RewriteOutgoingOpenAICompatibleModel(c, respBody)
 	c.Writer.Header().Set("Content-Type", "application/json")
 	_, err := io.Copy(c.Writer, bytes.NewBuffer(respBody))
 	if err != nil {

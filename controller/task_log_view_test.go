@@ -85,6 +85,27 @@ func TestTaskLogDTODoesNotInventHistoricalPluginProvenance(t *testing.T) {
 	assert.Nil(t, adminView.RootInfo)
 }
 
+func TestTaskLogDTOHidesMappedModelFromUsers(t *testing.T) {
+	task := &model.Task{
+		TaskID: "task_mapped_model",
+		Properties: model.Properties{
+			OriginModelName:   "gpt-5.5",
+			UpstreamModelName: "deepseek-flash",
+		},
+	}
+
+	userView := tasksToDto([]*model.Task{task}, false, common.RoleCommonUser)[0]
+	userProperties, ok := userView.Properties.(model.Properties)
+	require.True(t, ok)
+	assert.Equal(t, "gpt-5.5", userProperties.OriginModelName)
+	assert.Empty(t, userProperties.UpstreamModelName)
+
+	adminView := tasksToDto([]*model.Task{task}, false, common.RoleAdminUser)[0]
+	adminProperties, ok := adminView.Properties.(model.Properties)
+	require.True(t, ok)
+	assert.Equal(t, "deepseek-flash", adminProperties.UpstreamModelName)
+}
+
 func TestTaskLogDTOReplacesLegacyVideoURLWithAvailabilityFlag(t *testing.T) {
 	task := &model.Task{
 		TaskID:     "task_legacy_video",

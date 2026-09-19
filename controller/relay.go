@@ -116,9 +116,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 					"error": newAPIError.ToClaudeError(),
 				})
 			default:
-				c.JSON(newAPIError.StatusCode, gin.H{
+				if err := helper.WriteJSON(c, newAPIError.StatusCode, gin.H{
 					"error": newAPIError.ToOpenAIError(),
-				})
+				}); err != nil {
+					c.JSON(newAPIError.StatusCode, gin.H{
+						"error": newAPIError.ToOpenAIError(),
+					})
+				}
 			}
 		}
 	}()
@@ -139,6 +143,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
 	}
+	helper.EnableOpenAICompatibleModelRewrite(c, relayFormat)
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
@@ -649,6 +654,7 @@ func RelayTaskFetch(c *gin.Context) {
 		})
 		return
 	}
+	helper.EnableOpenAICompatibleModelRewrite(c, types.RelayFormatTask)
 	if taskErr := relay.RelayTaskFetch(c, relayInfo.RelayMode); taskErr != nil {
 		respondTaskError(c, taskErr)
 	}
@@ -670,6 +676,7 @@ func RelayTask(c *gin.Context) {
 		})
 		return
 	}
+	helper.EnableOpenAICompatibleModelRewrite(c, types.RelayFormatTask)
 	if action := c.GetString("task_action"); action != "" {
 		relayInfo.Action = action
 	}
@@ -921,7 +928,7 @@ func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
 				if valueErr == nil {
 					if body, callErr := pinned.Plugin.Engine.CallPath(c.Request.Context(), "native", []string{pinned.Route.Render}, requestContext.JSValue(), viewValue); callErr == nil {
 						diagnostics.present(outcome.Task, "native_presenter")
-						c.JSON(http.StatusOK, body)
+						writeTaskJSON(c, http.StatusOK, body)
 						return
 					} else {
 						logger.LogError(c, "task plugin native submit presenter failed: "+callErr.Error())
@@ -937,7 +944,7 @@ func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
 	if pinnedValue, exists := c.Get(pluginruntime.ContextKeyPinnedEndpoint); exists {
 		if pinned, ok := pinnedValue.(pluginruntime.PinnedEndpoint); ok && pinned.Protocol == "openai_video" && pinned.Operation.Name == "create" {
 			diagnostics.present(outcome.Task, "openai_video_create")
-			c.JSON(http.StatusOK, outcome.Task.ToOpenAIVideo())
+			writeTaskJSON(c, http.StatusOK, outcome.Task.ToOpenAIVideo())
 			return
 		}
 	}
@@ -946,13 +953,19 @@ func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
 		createdAt = outcome.Task.SubmitTime
 	}
 	diagnostics.present(outcome.Task, "host_fallback")
-	c.JSON(http.StatusOK, map[string]any{
+	writeTaskJSON(c, http.StatusOK, map[string]any{
 		"id":         outcome.Task.TaskID,
 		"task_id":    outcome.Task.TaskID,
 		"status":     "queued",
 		"model":      outcome.RelayInfo.OriginModelName,
 		"created_at": createdAt,
 	})
+}
+
+func writeTaskJSON(c *gin.Context, status int, body any) {
+	if err := helper.WriteJSON(c, status, body); err != nil {
+		c.JSON(status, body)
+	}
 }
 
 func respondTaskSubmissionError(c *gin.Context, taskErr *taskdto.TaskError) {

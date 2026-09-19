@@ -35,6 +35,40 @@ func TestFormatUserLogsStripsQuotaSaturation(t *testing.T) {
 	require.Contains(t, parsed, "model_price")
 }
 
+func TestFormatUserLogsStripsModelMapping(t *testing.T) {
+	other := common.MapToJsonStr(map[string]interface{}{
+		"model_ratio":         1.0,
+		"is_model_mapped":     true,
+		"upstream_model_name": "deepseek-flash",
+		"admin_info": map[string]interface{}{
+			"use_channel": []int{12, 21},
+		},
+	})
+	logs := []*Log{{Other: other}}
+
+	formatUserLogs(logs, 0)
+	parsed, err := common.StrToMap(logs[0].Other)
+	require.NoError(t, err)
+	assert.NotContains(t, parsed, "is_model_mapped")
+	assert.NotContains(t, parsed, "upstream_model_name")
+	assert.NotContains(t, parsed, "admin_info")
+	assert.Equal(t, 1.0, parsed["model_ratio"])
+}
+
+func TestFormatAdminLogsKeepsModelMapping(t *testing.T) {
+	other := common.MapToJsonStr(map[string]interface{}{
+		"is_model_mapped":     true,
+		"upstream_model_name": "deepseek-flash",
+	})
+	logs := []*Log{{Other: other}}
+
+	FormatAdminLogs(logs)
+	parsed, err := common.StrToMap(logs[0].Other)
+	require.NoError(t, err)
+	assert.Equal(t, true, parsed["is_model_mapped"])
+	assert.Equal(t, "deepseek-flash", parsed["upstream_model_name"])
+}
+
 func TestTaskPluginLogVisibilityIsRoleSeparated(t *testing.T) {
 	other := common.MapToJsonStr(map[string]interface{}{
 		"model_price": 1.25,

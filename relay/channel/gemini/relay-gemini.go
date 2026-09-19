@@ -401,9 +401,13 @@ func GeminiChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 				"error": newAPIError.ToClaudeError(),
 			})
 		default:
-			c.JSON(newAPIError.StatusCode, gin.H{
+			if err := helper.WriteJSON(c, newAPIError.StatusCode, gin.H{
 				"error": newAPIError.ToOpenAIError(),
-			})
+			}); err != nil {
+				c.JSON(newAPIError.StatusCode, gin.H{
+					"error": newAPIError.ToOpenAIError(),
+				})
+			}
 		}
 		return &usage, nil
 	}

@@ -67,6 +67,7 @@ import { AuditDetailFields } from '../../audit/components/audit-detail-fields'
 import type { UsageLog } from '../../data/schema'
 import {
   parseLogOther,
+  shouldRevealLogModelMapping,
   getParamOverrideActionLabel,
   parseAuditLine,
   decodeBillingExprB64,
@@ -1083,8 +1084,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
           />
         )}
 
-        {/* Model mapping */}
-        {other?.is_model_mapped && other?.upstream_model_name && (
+        {shouldRevealLogModelMapping(props.isAdmin, other) && (
           <DetailSection label={t('Model Mapping')}>
             <DetailRow
               label={t('Request Model')}
@@ -1093,7 +1093,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
             <DetailRow
               label={t('Actual Model')}
-              value={other.upstream_model_name}
+              value={other?.upstream_model_name}
               mono
             />
           </DetailSection>
