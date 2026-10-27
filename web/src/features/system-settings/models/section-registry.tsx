@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChannelAffinitySection } from '../general/channel-affinity'
 import { IoNetDeploymentSettingsSection } from '../integrations/ionet-deployment-settings-section'
 import type { ModelSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
@@ -25,7 +24,6 @@ import { CodexSettingsCard } from './codex-settings-card'
 import { GeminiSettingsCard } from './gemini-settings-card'
 import { GlobalSettingsCard } from './global-settings-card'
 import { GrokSettingsCard } from './grok-settings-card'
-import { RoutingReliabilitySection } from './routing-reliability-section'
 
 function formatJsonForEditor(value: string, fallback: string) {
   const raw = (value ?? '').toString().trim()
@@ -66,37 +64,7 @@ const MODELS_SECTIONS = [
       />
     ),
   },
-  {
-    id: 'routing-reliability',
-    titleKey: 'Routing Reliability',
-    build: (settings: ModelSettings) => (
-      <RoutingReliabilitySection
-        defaultValues={{
-          RetryTimes: settings.RetryTimes,
-          SameChannelRetryTimes: settings.SameChannelRetryTimes,
-          ResponsesRetryMaxDurationSeconds:
-            settings.ResponsesRetryMaxDurationSeconds,
-          ResponsesChannelCooldownSeconds:
-            settings.ResponsesChannelCooldownSeconds,
-          ChannelDisableThreshold: settings.ChannelDisableThreshold,
-          AutomaticDisableChannelEnabled:
-            settings.AutomaticDisableChannelEnabled,
-          AutomaticEnableChannelEnabled: settings.AutomaticEnableChannelEnabled,
-          AutomaticDisableKeywords: settings.AutomaticDisableKeywords,
-          AutomaticDisableStatusCodes: settings.AutomaticDisableStatusCodes,
-          AutomaticRetryStatusCodes: settings.AutomaticRetryStatusCodes,
-          'monitor_setting.auto_test_channel_enabled':
-            settings['monitor_setting.auto_test_channel_enabled'],
-          'monitor_setting.auto_test_channel_minutes':
-            settings['monitor_setting.auto_test_channel_minutes'],
-          'monitor_setting.channel_test_concurrency':
-            settings['monitor_setting.channel_test_concurrency'],
-          'monitor_setting.channel_test_mode':
-            settings['monitor_setting.channel_test_mode'],
-        }}
-      />
-    ),
-  },
+
   {
     id: 'gemini',
     titleKey: 'Gemini',
@@ -153,6 +121,7 @@ const MODELS_SECTIONS = [
       />
     ),
   },
+
   {
     id: 'codex',
     titleKey: 'Codex',
@@ -161,28 +130,6 @@ const MODELS_SECTIONS = [
         defaultValues={{
           'codex.images_main_model':
             settings['codex.images_main_model'] || 'gpt-5.6-luna',
-        }}
-      />
-    ),
-  },
-  {
-    id: 'channel-affinity',
-    titleKey: 'Channel Affinity',
-    build: (settings: ModelSettings) => (
-      <ChannelAffinitySection
-        defaultValues={{
-          'channel_affinity_setting.enabled':
-            settings['channel_affinity_setting.enabled'],
-          'channel_affinity_setting.switch_on_success':
-            settings['channel_affinity_setting.switch_on_success'],
-          'channel_affinity_setting.keep_on_channel_disabled':
-            settings['channel_affinity_setting.keep_on_channel_disabled'],
-          'channel_affinity_setting.max_entries':
-            settings['channel_affinity_setting.max_entries'],
-          'channel_affinity_setting.default_ttl_seconds':
-            settings['channel_affinity_setting.default_ttl_seconds'],
-          'channel_affinity_setting.rules':
-            settings['channel_affinity_setting.rules'],
         }}
       />
     ),

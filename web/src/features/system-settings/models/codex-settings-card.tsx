@@ -87,7 +87,9 @@ export function CodexSettingsCard(props: Props) {
   })
 
   const baselineRef = useRef<FlatCodexDefaults>(
-    normalizeFormValues(buildFormDefaults(props.defaultValues) as CodexFormValues)
+    normalizeFormValues(
+      buildFormDefaults(props.defaultValues) as CodexFormValues
+    )
   )
   const baselineSerializedRef = useRef<string>(
     JSON.stringify(baselineRef.current)

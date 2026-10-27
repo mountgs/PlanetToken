@@ -78,3 +78,23 @@ func TestOaiResponsesHandlerReturnsRetryableErrorForHTTP200FailedResponse(t *tes
 	assert.True(t, types.IsNextChannelRetryError(apiErr))
 	assert.Empty(t, recorder.Body.String())
 }
+
+func TestOaiResponsesStreamRetainsUsageAfterOutputFailure(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	info := &relaycommon.RelayInfo{OriginModelName: "gpt-5", DisablePing: true, ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "gpt-5"}}
+	body := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":2,\"total_tokens\":12},\"error\":{\"type\":\"server_error\",\"code\":\"server_is_overloaded\"}}}\n\n"
+	usage, apiErr := OaiResponsesStreamHandler(c, info, &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{"Content-Type": []string{"text/event-stream"}}})
+	require.Nil(t, apiErr)
+	require.NotNil(t, usage)
+	assert.Equal(t, 10, usage.PromptTokens)
+	assert.Equal(t, 2, usage.CompletionTokens)
+	assert.True(t, c.GetBool(constant.ContextKeyResponsesSemanticOutput))
+	assert.Contains(t, recorder.Body.String(), "hello")
+	assert.Contains(t, recorder.Body.String(), "response.failed")
+	assert.True(t, info.StreamStatus.ResponseFailed())
+}

@@ -1,5 +1,21 @@
 # Session Handoff
 
+## 2026-10-27 Upstream merge into isolated branch
+
+- Baseline authorized by user: GitHub committed branch db887f185 (origin/codex/responses-retry-failover). Uncommitted edits were explicitly discarded before this merge.
+- Workspace: D:/WorkSpace/PlanetToken/PlanetToken-upstream-merge; branch codex/upstream-sync-20261027.
+- Upstream target: 34003e9c2 (313 new commits). Original application workspace D:/WorkSpace/PlanetToken/PlanetToken remains clean at db887f185.
+- Preserved Codex Image 2 generation/editing, SSE/heartbeats/error passthrough, configurable main model, Responses same-channel retries/failover/cooldown/affinity, and ordinary-user model-mapping hiding.
+- Adapted the three local retry options to upstream request-policy API and Sessions and retries UI. Retained upstream usage accumulator and recorded usage before downstream writes; stopped retry after semantic output. New response_model log/export data is admin-only under the local visibility requirement.
+- Upstream additions include request policies and decision records, Responses WebSocket, scoped access tokens, usage log export and response-model observations, new billing/cache accounting, providers/plugins/UI/security improvements.
+- Actual verification: Go 1.26.10, Bun 1.4.4; frontend frozen install, typecheck (1,407 files), changed-file oxlint, production build pass. Focused frontend tests: 41 pass plus routing suite 30 pass; initial worker startup timeouts resolved by serial reruns. GOWORK=off go build ./... in relaykit and tokenkit both pass. go test ./relay/channel/codex ./relay/channel/openai pass; relay and service package tests pass. Focused model/controller tests (log visibility, retry options, request policy SQLite, pin/output boundaries) pass.
+- Root go build -buildvcs=false ./... passed. Ordinary VCS stamping is blocked by Windows Git ownership; relaykit/tokenkit independent builds also passed.
+- Full go test ./... -timeout 4m ran after the real frontend build and failed: controller SQLite audit.db cleanup reported open-file handles repeatedly and the package timed out at four minutes; relay/channel graceful-GOAWAY test reported Windows TCP reset/abort. Other packages completed successfully. The unmodified upstream 34003e9c2 archive also reproduced the GOAWAY failure with -count=20 (five failed iterations), so it is not introduced by this merge. Full-suite verification is not green.
+- Focused TestRequestPolicyDatabaseMatrix passed on SQLite 3.50.4; MySQL and PostgreSQL subtests explicitly skipped because their DSNs are not configured.
+- Upstream baseline comparison: unmodified 34003e9c2 also fails TestAuditDatabaseMatrix on Windows audit.db cleanup (both upgrade=false and upgrade=true), and reproduces the GOAWAY TCP reset. Neither failure requires the PlanetToken merge changes.
+- MySQL/PostgreSQL test instances and upgrade migration matrix unavailable (no TEST_MYSQL_DSN/TEST_POSTGRES_DSN). Do not declare database compatibility or production rollout verified. No production deployment or push performed.
+
+
 ## 2026-09-18 Hide model mapping from ordinary users
 
 - 代码已落地：用户日志/任务接口剥映射字段；OpenAI 兼容出站 JSON 的 `model` 回写请求模型；前台管理员全局视图才展示映射。

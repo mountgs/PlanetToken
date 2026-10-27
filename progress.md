@@ -33,9 +33,9 @@
 
 ## Current State
 
-**Last Updated:** 2026-09-18
-**Active Epic:** feat-codex-008 — Responses 输出前瞬时失败重试与渠道故障转移
-**Phase:** **feat-codex-008 已完成；Image 006 仍等待生产代理链路验收；普通用户隐藏模型映射代码已落地，WSL 浏览器验收未完成**
+**Last Updated:** 2026-10-27
+**Active Epic:** feat-upstream-sync-20261027 — 在隔离分支合并上游并保留已提交功能
+**Phase:** **合并冲突已解决，前后端构建与定向回归通过；全量后端验证受 Windows 失败影响，MySQL/PostgreSQL 矩阵待验证**
 **Commercial models:** `gpt-5.4`、`gpt-5.5`（仅对外售卖此二档）  
 **Server:** `{SERVER_HOST}`（具体主机勿再写入公开仓库；本地私密记录维护）
 
@@ -113,3 +113,18 @@ export RELAY_TOKEN=sk-你的令牌
 ## Migration Note
 
 **2026-07-15:** 生产配置/文档/脚本/harness 资产已从 `/home/mountgs/new-api` 迁移到 `/home/mountgs/PlanetToken`（fork `mountgs/PlanetToken`）。应用层 Codex 代码补丁未自动迁移（需对照最新 upstream 再合）。
+
+## 2026-10-27 Upstream merge into isolated branch
+
+- Baseline authorized by user: GitHub committed branch db887f185 (origin/codex/responses-retry-failover). Uncommitted edits were explicitly discarded before this merge.
+- Workspace: D:/WorkSpace/PlanetToken/PlanetToken-upstream-merge; branch codex/upstream-sync-20261027.
+- Upstream target: 34003e9c2 (313 new commits). Original application workspace D:/WorkSpace/PlanetToken/PlanetToken remains clean at db887f185.
+- Preserved Codex Image 2 generation/editing, SSE/heartbeats/error passthrough, configurable main model, Responses same-channel retries/failover/cooldown/affinity, and ordinary-user model-mapping hiding.
+- Adapted the three local retry options to upstream request-policy API and Sessions and retries UI. Retained upstream usage accumulator and recorded usage before downstream writes; stopped retry after semantic output. New response_model log/export data is admin-only under the local visibility requirement.
+- Upstream additions include request policies and decision records, Responses WebSocket, scoped access tokens, usage log export and response-model observations, new billing/cache accounting, providers/plugins/UI/security improvements.
+- Actual verification: Go 1.26.10, Bun 1.4.4; frontend frozen install, typecheck (1,407 files), changed-file oxlint, production build pass. Focused frontend tests: 41 pass plus routing suite 30 pass; initial worker startup timeouts resolved by serial reruns. GOWORK=off go build ./... in relaykit and tokenkit both pass. go test ./relay/channel/codex ./relay/channel/openai pass; relay and service package tests pass. Focused model/controller tests (log visibility, retry options, request policy SQLite, pin/output boundaries) pass.
+- Root go build -buildvcs=false ./... passed. Ordinary VCS stamping is blocked by Windows Git ownership; relaykit/tokenkit independent builds also passed.
+- Full go test ./... -timeout 4m ran after the real frontend build and failed: controller SQLite audit.db cleanup reported open-file handles repeatedly and the package timed out at four minutes; relay/channel graceful-GOAWAY test reported Windows TCP reset/abort. Other packages completed successfully. The unmodified upstream 34003e9c2 archive also reproduced the GOAWAY failure with -count=20 (five failed iterations), so it is not introduced by this merge. Full-suite verification is not green.
+- Focused TestRequestPolicyDatabaseMatrix passed on SQLite 3.50.4; MySQL and PostgreSQL subtests explicitly skipped because their DSNs are not configured.
+- Upstream baseline comparison: unmodified 34003e9c2 also fails TestAuditDatabaseMatrix on Windows audit.db cleanup (both upgrade=false and upgrade=true), and reproduces the GOAWAY TCP reset. Neither failure requires the PlanetToken merge changes.
+- MySQL/PostgreSQL test instances and upgrade migration matrix unavailable (no TEST_MYSQL_DSN/TEST_POSTGRES_DSN). Do not declare database compatibility or production rollout verified. No production deployment or push performed.

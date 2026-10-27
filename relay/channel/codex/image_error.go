@@ -13,6 +13,8 @@ import (
 
 const maxCodexImageErrorFieldLength = 2048
 
+var codexImageURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
+
 var codexImageBearerPattern = regexp.MustCompile(`(?i)\bbearer\s+[^\s,;]+`)
 
 type codexImageUpstreamError struct {
@@ -122,7 +124,7 @@ func isCodexImagePolicyError(errorType, code string) bool {
 
 func sanitizeCodexImageErrorField(value string) string {
 	value = strings.TrimSpace(codexImageBearerPattern.ReplaceAllString(value, "Bearer ***"))
-	value = common.MaskSensitiveInfo(value)
+	value = common.MaskSensitiveInfo(codexImageURLPattern.ReplaceAllString(value, "[upstream]"))
 	if len(value) <= maxCodexImageErrorFieldLength {
 		return value
 	}

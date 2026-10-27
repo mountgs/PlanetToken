@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/tokenkit"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
@@ -173,7 +174,7 @@ func handleResponsesStream(c *gin.Context, resp *http.Response, info *relaycommo
 			if info != nil && info.ChannelMeta != nil {
 				modelName = info.UpstreamModelName
 			}
-			usage.CompletionTokens = service.CountTextToken(tempStr, modelName)
+			usage.CompletionTokens = tokenkit.Count(modelName, tempStr)
 		}
 	}
 	if info != nil && usage.PromptTokens == 0 && usage.CompletionTokens != 0 {

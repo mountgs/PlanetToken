@@ -353,6 +353,13 @@
         ],
         "acceptance": "流式和非流式 Responses 的输出前瞬时错误可安全重试；输出后不重放；同渠道、跨渠道、总时限、冷却、亲和、计费和日志行为符合已确认设计。"
       }
+    },
+    {
+      "id": "feat-upstream-sync-20261027",
+      "name": "Merge upstream 34003e9c2 while retaining db887f185 committed capabilities",
+      "status": "in-progress",
+      "dependencies": [],
+      "evidence": "Isolated branch codex/upstream-sync-20261027 merges db887f185 and 34003e9c2. Conflicts resolved; frontend typecheck/lint/build and 71 focused frontend tests pass; root build with -buildvcs=false and relaykit/tokenkit independent builds pass; codex/openai/relay/service and focused model/controller regressions pass. SQLite request policy matrix passes on 3.50.4. Full Go suite fails on Windows SQLite open-file cleanup/controller timeout and HTTP2 GOAWAY test; GOAWAY failure also reproduced on unmodified upstream. MySQL/PostgreSQL DSNs unavailable; upgrade matrix and production validation remain pending."
     }
   ]
 }

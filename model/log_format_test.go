@@ -13,10 +13,10 @@ import (
 // saturation marker (nested under other.admin_info) is removed for non-admin
 // log views, since formatUserLogs strips the whole admin_info object.
 func TestFormatUserLogsStripsQuotaSaturation(t *testing.T) {
-	other := common.MapToJsonStr(map[string]interface{}{
+	other := common.MapToJsonStr(map[string]any{
 		"model_price": 0.004,
-		"admin_info": map[string]interface{}{
-			"quota_saturation": map[string]interface{}{
+		"admin_info": map[string]any{
+			"quota_saturation": map[string]any{
 				"op":      "QuotaFromDecimal",
 				"kind":    "overflow",
 				"clamped": common.MaxQuota,
@@ -40,6 +40,7 @@ func TestFormatUserLogsStripsModelMapping(t *testing.T) {
 		"model_ratio":         1.0,
 		"is_model_mapped":     true,
 		"upstream_model_name": "deepseek-flash",
+		"response_model":      map[string]any{"requested_model": "astra", "upstream_model": "deepseek-flash", "returned_model": "deepseek-flash"},
 		"admin_info": map[string]interface{}{
 			"use_channel": []int{12, 21},
 		},
@@ -51,6 +52,7 @@ func TestFormatUserLogsStripsModelMapping(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, parsed, "is_model_mapped")
 	assert.NotContains(t, parsed, "upstream_model_name")
+	assert.NotContains(t, parsed, "response_model")
 	assert.NotContains(t, parsed, "admin_info")
 	assert.Equal(t, 1.0, parsed["model_ratio"])
 }
@@ -59,6 +61,7 @@ func TestFormatAdminLogsKeepsModelMapping(t *testing.T) {
 	other := common.MapToJsonStr(map[string]interface{}{
 		"is_model_mapped":     true,
 		"upstream_model_name": "deepseek-flash",
+		"response_model":      map[string]any{"requested_model": "astra", "upstream_model": "deepseek-flash", "returned_model": "deepseek-flash"},
 	})
 	logs := []*Log{{Other: other}}
 
@@ -67,21 +70,22 @@ func TestFormatAdminLogsKeepsModelMapping(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, true, parsed["is_model_mapped"])
 	assert.Equal(t, "deepseek-flash", parsed["upstream_model_name"])
+	assert.Contains(t, parsed, "response_model")
 }
 
 func TestTaskPluginLogVisibilityIsRoleSeparated(t *testing.T) {
-	other := common.MapToJsonStr(map[string]interface{}{
+	other := common.MapToJsonStr(map[string]any{
 		"model_price": 1.25,
-		"admin_info": map[string]interface{}{
-			"task_plugin": map[string]interface{}{
+		"admin_info": map[string]any{
+			"task_plugin": map[string]any{
 				"key":     "document-parser",
 				"name":    "Document Parser",
 				"version": "1.2.3",
 			},
 		},
-		"root_info": map[string]interface{}{
+		"root_info": map[string]any{
 			"upstream_task_id": "upstream-private",
-			"task_plugin": map[string]interface{}{
+			"task_plugin": map[string]any{
 				"generation": 42,
 			},
 		},
@@ -120,19 +124,19 @@ func TestTaskPluginLogVisibilityIsRoleSeparated(t *testing.T) {
 }
 
 func TestLegacyLogOtherVisibilityIsRoleSeparated(t *testing.T) {
-	other := common.MapToJsonStr(map[string]interface{}{
+	other := common.MapToJsonStr(map[string]any{
 		"request_path":  "/v1/chat/completions",
 		"channel_id":    202,
 		"channel_name":  "legacy-secret-channel",
 		"channel_type":  1,
 		"reject_reason": "legacy-policy-rejection",
-		"admin_info": map[string]interface{}{
+		"admin_info": map[string]any{
 			"existing_admin_field": "preserved",
 		},
-		"root_info": map[string]interface{}{
+		"root_info": map[string]any{
 			"upstream_request_id": "upstream-private",
 		},
-		"audit_info": map[string]interface{}{
+		"audit_info": map[string]any{
 			"method": "POST",
 		},
 	})
@@ -177,7 +181,7 @@ func TestLegacyLogOtherVisibilityIsRoleSeparated(t *testing.T) {
 		assert.NotContains(t, parsed, "reject_reason")
 		assert.NotContains(t, parsed, "root_info")
 		assert.Contains(t, parsed, "audit_info")
-		adminInfo, ok := parsed["admin_info"].(map[string]interface{})
+		adminInfo, ok := parsed["admin_info"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "preserved", adminInfo["existing_admin_field"])
 		assert.Equal(t, "legacy-policy-rejection", adminInfo["reject_reason"])
@@ -194,7 +198,7 @@ func TestLegacyLogOtherVisibilityIsRoleSeparated(t *testing.T) {
 		assert.NotContains(t, parsed, "reject_reason")
 		assert.Contains(t, parsed, "root_info")
 		assert.Contains(t, parsed, "audit_info")
-		adminInfo, ok := parsed["admin_info"].(map[string]interface{})
+		adminInfo, ok := parsed["admin_info"].(map[string]any)
 		require.True(t, ok)
 		assert.Equal(t, "preserved", adminInfo["existing_admin_field"])
 		assert.Equal(t, "legacy-policy-rejection", adminInfo["reject_reason"])
@@ -202,9 +206,9 @@ func TestLegacyLogOtherVisibilityIsRoleSeparated(t *testing.T) {
 }
 
 func TestLegacyRejectReasonDoesNotOverrideScopedValue(t *testing.T) {
-	other := common.MapToJsonStr(map[string]interface{}{
+	other := common.MapToJsonStr(map[string]any{
 		"reject_reason": "legacy-value",
-		"admin_info": map[string]interface{}{
+		"admin_info": map[string]any{
 			"reject_reason": "scoped-value",
 		},
 	})
@@ -215,7 +219,7 @@ func TestLegacyRejectReasonDoesNotOverrideScopedValue(t *testing.T) {
 	parsed, err := common.StrToMap(logs[0].Other)
 	require.NoError(t, err)
 	assert.NotContains(t, parsed, "reject_reason")
-	adminInfo, ok := parsed["admin_info"].(map[string]interface{})
+	adminInfo, ok := parsed["admin_info"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "scoped-value", adminInfo["reject_reason"])
 }
@@ -228,7 +232,7 @@ func TestLegacyRejectReasonHandlesNullAdminInfo(t *testing.T) {
 	parsed, err := common.StrToMap(logs[0].Other)
 	require.NoError(t, err)
 	assert.NotContains(t, parsed, "reject_reason")
-	adminInfo, ok := parsed["admin_info"].(map[string]interface{})
+	adminInfo, ok := parsed["admin_info"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "legacy-value", adminInfo["reject_reason"])
 }
