@@ -1,5 +1,13 @@
 # Session Handoff
 
+## Production release completed — 2026-10-30
+
+- Customer UI is deployed: source `dd3ca371675a03cf4b862f2b034582a094ed7c58`, version `customer-ui-20261030-dd3ca3716`, digest `sha256:dfcfd30e281e81190c0abc9e2691d7dd2b092be27d39333deedc07857946634c`. Exact source is public, embedded in the customer sidebar link and checked out at the server source symlink. Actions run 41041503869 passed Linux frontend/affected backend checks and published linux/amd64. Local consolidated frontend run passed 118 tests/11 files.
+- Backup and isolated restored-data two-startup rehearsal passed, including full user/token/channel row fingerprints. Only app container replaced; existing PostgreSQL/Redis/config retained. Final counts preserved: 157 users, 108 tokens, 6 channels, 19,807 logs. App healthy/no restarts after 60 seconds; existing API key, unauthenticated protection, Contact API, frontend assets and public reverse proxy checks passed.
+- Protected server archive `/www/wwwroot/new-api/backups/release-20261030-dd3ca3716`; rollback via its `rollback.sh`, preserving live database. Ignored local deployment assets in `.local-tests/deploy-20261030/`; final off-server bundle transfer completed and 17 exported files checksum-verified in `final-backup/`. Independent workstation request also confirms public deployed version. Do not commit those files.
+- Server currently exposes its existing HTTP IP site and has no domain/HTTPS configuration; do not claim TLS is deployed. No payment or paid-generation E2E performed. Full Windows Go suite remains non-green and new browser visual QA unavailable; feature stays in-progress under repository gates. Earlier release preparation/no-push notes below are historical.
+- Contact configuration lives at root administrator `/system-settings/site/contact`, with hosted QR image URLs and Markdown preview. Real contact details remain unconfigured. Customer Online Chat uses the original `/playground`.
+
 ## Active release — 2026-10-30
 
 - User authorized updating the existing remote server; this supersedes older no-deployment notes below. Recovered working SSH connection from prior deployment assets, no new credentials needed. Use PlanetToken-customer-ui and codex/customer-ui-rightapi only.
