@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next'
 
 import { StaggerContainer, StaggerItem } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { getUserQuotaDates } from '@/features/dashboard/api'
 import { useSummaryCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import type { QuotaDataItem } from '@/features/dashboard/types'
@@ -137,7 +138,7 @@ const HEALTH_CONFIG: Record<
   },
 }
 
-export function SummaryCards() {
+export function SummaryCards(props: { customer?: boolean } = {}) {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
   const { status, loading } = useStatus()
@@ -152,6 +153,7 @@ export function SummaryCards() {
       'dashboard',
       'overview',
       'summary-sparklines',
+      user?.id,
       summaryTimeRange.start_timestamp,
       summaryTimeRange.end_timestamp,
     ],
@@ -251,6 +253,46 @@ export function SummaryCards() {
       sparklineVariant: 'line' as const,
     }
   })
+
+  if (props.customer) {
+    return (
+      <div
+        className='grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4'
+        aria-label={t('Usage at a glance')}
+      >
+        <div className='bg-card min-w-0 rounded-xl border p-5'>
+          <p className='text-muted-foreground text-sm'>
+            {t('Credit remaining')}
+          </p>
+          <p className='mt-3 truncate text-2xl font-semibold tabular-nums'>
+            {formatQuota(remainQuota)}
+          </p>
+          <Link
+            to='/wallet'
+            className='text-primary mt-3 inline-flex items-center gap-2 text-sm'
+          >
+            {t('Online Recharge')}
+            <ArrowRight className='size-3' />
+          </Link>
+        </div>
+        {items.map((item) => (
+          <div key={item.key} className='bg-card min-w-0 rounded-xl border p-5'>
+            <p className='text-muted-foreground text-sm'>{item.title}</p>
+            {loading || usageTrendQuery.isPending ? (
+              <Skeleton className='mt-3 h-8 w-24' />
+            ) : (
+              <p className='mt-3 truncate text-2xl font-semibold tabular-nums'>
+                {usageTrendQuery.isError && item.key === 'todayUsage'
+                  ? '—'
+                  : item.value}
+              </p>
+            )}
+            <p className='text-muted-foreground mt-3 text-xs'>{item.desc}</p>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className='bg-card overflow-hidden rounded-2xl border shadow-xs'>

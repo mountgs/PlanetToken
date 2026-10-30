@@ -21,6 +21,7 @@ import z from 'zod'
 
 import { Pricing } from '@/features/pricing'
 import { getModuleAccessForGuard } from '@/lib/nav-modules'
+import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 const pricingSearchSchema = z.object({
@@ -42,6 +43,10 @@ export const Route = createFileRoute('/pricing/')({
     const access = await getModuleAccessForGuard(context.queryClient, 'pricing')
     if (!access.enabled) {
       throw redirect({ to: '/' })
+    }
+    const user = useAuthStore.getState().auth.user
+    if (user && user.role < ROLE.ADMIN) {
+      throw redirect({ to: '/catalog', replace: true })
     }
     if (access.requireAuth) {
       const { auth } = useAuthStore.getState()

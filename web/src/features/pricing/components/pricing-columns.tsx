@@ -26,11 +26,14 @@ import {
 } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
+import { Button } from '@/components/ui/button'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
+import { CUSTOMER_PRICE_COLUMNS } from '../lib/customer-price-columns'
 import { parseTags } from '../lib/filters'
 import type { PricingModel } from '../types'
 import { CachedPriceCell } from './cached-price-cell'
+import { CustomerPriceCell, CustomerBillingMode } from './customer-price-cell'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelPriceCell, type ModelPriceCellOptions } from './model-price-cell'
 
@@ -38,14 +41,17 @@ import { ModelPriceCell, type ModelPriceCellOptions } from './model-price-cell'
 // Pricing Table Columns
 // ----------------------------------------------------------------------------
 
-export type PricingColumnsOptions = ModelPriceCellOptions
+export type PricingColumnsOptions = ModelPriceCellOptions & {
+  customer?: boolean
+  onModelClick?: (name: string) => void
+}
 
 export function usePricingColumns(
   options: PricingColumnsOptions = {}
 ): ColumnDef<PricingModel>[] {
   const { t } = useTranslation()
 
-  return [
+  const columns: ColumnDef<PricingModel>[] = [
     // Model column
     {
       accessorKey: 'model_name',
@@ -61,9 +67,22 @@ export function usePricingColumns(
         return (
           <div className='flex max-w-full min-w-0 items-center gap-2'>
             {modelIcon}
-            <span className='truncate font-mono text-sm font-medium'>
-              {model.model_name}
-            </span>
+            {options.customer ? (
+              <Button
+                variant='link'
+                className='h-auto min-w-0 truncate p-0 font-mono text-sm font-medium'
+                onClick={(event) => {
+                  event.stopPropagation()
+                  options.onModelClick?.(model.model_name)
+                }}
+              >
+                {model.model_name}
+              </Button>
+            ) : (
+              <span className='truncate font-mono text-sm font-medium'>
+                {model.model_name}
+              </span>
+            )}
           </div>
         )
       },
@@ -73,10 +92,13 @@ export function usePricingColumns(
     // Type column
     {
       accessorKey: 'quota_type',
-      header: t('Type'),
-      cell: ({ row }) => (
-        <ModelBillingModeBadge model={row.original} className='-ml-1.5' />
-      ),
+      header: t(options.customer ? 'Billing method' : 'Type'),
+      cell: ({ row }) =>
+        options.customer ? (
+          <CustomerBillingMode model={row.original} options={options} />
+        ) : (
+          <ModelBillingModeBadge model={row.original} className='-ml-1.5' />
+        ),
       size: 110,
       enableSorting: false,
     },
@@ -89,7 +111,11 @@ export function usePricingColumns(
         <DataTableColumnHeader column={column} title={t('Price')} />
       ),
       cell: ({ row }) => (
-        <ModelPriceCell model={row.original} options={options} />
+        <ModelPriceCell
+          model={row.original}
+          options={options}
+          showExpression={!options.customer}
+        />
       ),
       size: 180,
       enableSorting: false,
@@ -201,4 +227,33 @@ export function usePricingColumns(
       enableSorting: false,
     },
   ]
+  if (!options.customer) return columns
+  return columns.flatMap((column): ColumnDef<PricingModel>[] => {
+    if (column.id === 'cached_price') return []
+    if ('accessorKey' in column) {
+      if (
+        ['tags', 'supported_endpoint_types', 'enable_groups'].includes(
+          String(column.accessorKey)
+        )
+      ) {
+        return []
+      }
+      if (column.accessorKey === 'price') {
+        return CUSTOMER_PRICE_COLUMNS.map((price) => ({
+          id: price.type,
+          header: t(price.label),
+          cell: ({ row }) => (
+            <CustomerPriceCell
+              model={row.original}
+              type={price.type}
+              options={options}
+            />
+          ),
+          size: 130,
+          enableSorting: false,
+        }))
+      }
+    }
+    return [column]
+  })
 }

@@ -183,6 +183,13 @@ func GetNotice(c *gin.Context) {
 	serveRevalidatedJSON(c, notice)
 }
 
+func GetContact(c *gin.Context) {
+	common.OptionMapRWMutex.RLock()
+	contact := common.OptionMap["Contact"]
+	common.OptionMapRWMutex.RUnlock()
+	serveRevalidatedJSON(c, contact)
+}
+
 func GetAbout(c *gin.Context) {
 	common.OptionMapRWMutex.RLock()
 	about := common.OptionMap["About"]

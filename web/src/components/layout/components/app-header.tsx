@@ -55,6 +55,7 @@ import { TopNav } from './top-nav'
  * />
  */
 type AppHeaderProps = {
+  customer?: boolean
   /**
    * Custom navigation links, uses default global navigation or dynamically generated from backend if not provided
    */
@@ -95,6 +96,7 @@ type AppHeaderProps = {
 }
 
 export function AppHeader({
+  customer = false,
   navLinks = defaultTopNavLinks,
   showTopNav = true,
   leftContent,
@@ -115,7 +117,7 @@ export function AppHeader({
     <Header>
       <div className='@container/system-brand flex min-w-0 flex-1 items-center gap-1'>
         <SystemBrand variant='inline' />
-        <SystemUpdateAction presentation='version' />
+        {!customer && <SystemUpdateAction presentation='version' />}
       </div>
 
       {leftContent ? (
@@ -144,7 +146,7 @@ export function AppHeader({
               loading={notifications.loading}
             />
           )}
-          <LanguageSwitcher />
+          {!customer && <LanguageSwitcher />}
           {showConfigDrawer && <ConfigDrawer />}
           {showProfileDropdown && <ProfileDropdown />}
         </div>

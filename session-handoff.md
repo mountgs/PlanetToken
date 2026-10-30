@@ -1,5 +1,42 @@
 # Session Handoff
 
+## Active release — 2026-10-30
+
+- User authorized updating the existing remote server; this supersedes older no-deployment notes below. Recovered working SSH connection from prior deployment assets, no new credentials needed. Use PlanetToken-customer-ui and codex/customer-ui-rightapi only.
+- Release workflow verifies Linux frontend and affected backend behavior, publishes linux/amd64 to GHCR and embeds exact source commit URL. Local typecheck (1,431 files), changed-file lint (54 TS files) and whitespace check pass. Full Windows Go suite remains non-green; consolidated frontend rerun has not completed.
+- Before cutover: publish source/image, protect database/configuration/current image, restore production PostgreSQL snapshot in an isolated internal network, verify first and second startup, then pin digest and replace only app container. Keep existing env and data. Production update still pending at this commit.
+- Deployment scripts, private connection data and evidence belong outside tracked source. Inspect disk capacity; preserve rollback and production data. Complete release evidence and source sync after health/authentication verification.
+
+## 2026-10-30 Online Chat now reuses Playground
+
+- User explicitly chose the original Playground for customer Online Chat. This supersedes the earlier decision to hide Playground and use external chat presets for that customer entry.
+- Customer navigation now links Online Chat directly to `/playground`, independent of external preset configuration. Restored the original Playground route guard (administrator module toggle only; authenticated parent retained), removing the customer-role redirect introduced by the redesign. Existing `chat.playground` configuration controls entry visibility and route availability; administrator navigation and existing backend `/pg/chat/completions` behavior are unchanged. Reused the complete Playground without duplicating chat logic.
+- Regression-first verification: before implementation 3 cases failed (destination, disabled-module entry and customer route access). After implementation, all 23 cases in customer-navigation/sidebar-config/Playground route-access pass. Typecheck passes in 1,431 files, changed-file lint 54 TS files, protected-header-safe formatting, `git diff --check` and production build pass. No backend changes this follow-up; previous full Go failures remain documented above/below.
+- Restarted fixture preview with latest build at `http://127.0.0.1:4191/playground` and added synthetic model choices. HTTP verifies page and model fixtures; no new browser visual QA and no actual model generation: the fixture server does not connect upstream AI. Real deployment uses the existing session-authenticated Playground endpoint and billing. Evidence: `chat-before.log`, `chat-after.log`, `chat-typecheck.log`, `chat-build.log` in external customer-ui-verification directory. No commit/push/deployment.
+
+## Current follow-up — 2026-10-30
+
+- Continue only in `D:/WorkSpace/PlanetToken/PlanetToken-customer-ui`, branch `codex/customer-ui-rightapi`. Contact and pricing follow-up is implemented, checked and uncommitted. No push/deployment authorized or performed.
+- User clarified contacts must be configurable by an administrator and support WeChat QR images. Implemented `/contact` and `/system-settings/site/contact`, persisted `Contact` option and public `/api/contact`; reuse existing root-only option updates, ETag handler, SettingsForm and sanitized RichContent. Multiple hosted HTTP(S) image URLs can be inserted and moved using their Markdown lines. No upload service. Blank configuration shows an empty state; no fabricated channels. Save failure retains drafts. Memoized defaults prevent post-save preview reset.
+- Four catalog token-price columns, billing-method filter and full tier conditions/details now use selected key/group rates and display currency. Free and unavailable values remain distinct. Request/task prices stay beside billing method, not in token-price cells. Existing admin price presentation defaults remain intact.
+- Latest checks: 77 distinct frontend cases across six suites pass (final pricing rerun 11/11, contact editor rerun 4/4); typecheck 1,430 files; lint of 54 changed TS files; protected-header-safe format, diff whitespace and production build pass. Contact controller test and full router test package pass. Full Go suite completed non-green: controller Windows audit.db cleanup failures and 90-second timeout; initial new public-route coverage omission fixed and router rerun passes. No new browser QA: CUA/node runtime initialization still errors with Windows error 3.
+- Fixture server restarted at `http://127.0.0.1:4191/catalog`, synthetic tiered model plus empty contact configuration. Site settings can save local fixture contacts (in memory). Server script and evidence logs remain in `D:/WorkSpace/PlanetToken/customer-ui-verification`. Preview serves actual latest build, but HTTP verification does not replace visual inspection.
+- Before release: resolve/accept full-suite verification limits, visually inspect customer contact and four-column/tiered pricing on desktop/mobile, configure real contact content/image hosting, publish exact modified AGPL source and configure `VITE_SOURCE_URL`. Feature stays `in-progress`; no database migration/dependency changes.
+
+## Current work — 2026-10-29 customer UI
+
+- User authorized implementation after the RightAPI interview. Feature: `feat-customer-ui-rightapi`. UI is implemented and ready for review; keep harness status `in-progress` because full required verification is not green.
+- Workdir: `D:/WorkSpace/PlanetToken/PlanetToken-customer-ui`; branch `codex/customer-ui-rightapi`; base `fb45dff52`. Changes remain uncommitted. Do not switch to the older `PlanetToken` checkout.
+- Customer-only warm neutral/terracotta theme, compact overview and simplified navigation. Admin theme/navigation stay original. Separate `/billing` page for recharge bills, including old customer `show_history` links. Hide referral, Playground, audit and Flow; profile/security/language live in the account menu.
+- `/catalog` prices follow selected Key group; persist only Key ID per user. No keys use default. Auto groups respect permissions/limits, unknown groups show unavailable, model limits apply, billing cells reuse existing formulas. No backend/schema/dependency changes.
+- Verification: 56 frontend tests (7 files) pass; final wallet rerun 8 pass. Typecheck 1,421 files, changed-file oxlint 39 TS files, protected-header-safe format, diff whitespace and production build pass. Focused Go model/controller log-visibility tests pass. Browser QA uses synthetic fixtures; no production writes/payments.
+- Full checks remain non-green: `init.sh` initially hit C: disk/pagefile pressure; serialized Go run with D: temporary storage reported controller SQLite cleanup failures and controller/relay timeouts. Other packages including service completed. Earlier baseline reproduced SQLite cleanup failures; do not claim every timeout is proven pre-existing. Full frontend lint reports errors in untouched areas (utils, confirm-dialog, system-settings); changed files pass.
+- Fixture preview: `http://127.0.0.1:4191/catalog`; script `D:/WorkSpace/PlanetToken/customer-ui-verification/preview.cjs` outside repo. Restart with Node if necessary. Screenshots and Go/build logs are in that directory. `web/node_modules` links to existing dependencies; no lockfile change.
+- Before deployment: publish exact modified Corresponding Source, then configure `VITE_SOURCE_URL` (build environment or `.env.production`) for that release. Attribution/AGPL source footer retained. Default fork URL does not yet contain this unpushed implementation. No push or deployment performed.
+- Remaining acceptance: user visual review, staging with representative data (payment return/configured chat iframe or external site), and resolution or explicit acceptance of full-suite limitations before release. Payment/chat end-to-end and production rollout are unverified.
+
+Historical handoffs follow.
+
 ## 2026-10-27 Upstream merge into isolated branch
 
 - Baseline authorized by user: GitHub committed branch db887f185 (origin/codex/responses-retry-failover). Uncommitted edits were explicitly discarded before this merge.

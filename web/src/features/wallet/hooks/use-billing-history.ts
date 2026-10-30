@@ -56,6 +56,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
   const requestIdRef = useRef(0)
   const [loading, setLoading] = useState(false)
   const [completing, setCompleting] = useState(false)
+  const [error, setError] = useState(false)
 
   /**
    * Fetch billing history
@@ -63,6 +64,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
   const fetchBillingHistory = useCallback(async () => {
     const requestId = ++requestIdRef.current
     setLoading(true)
+    setError(false)
     try {
       const response = isAdmin
         ? await getAllBillingHistory(page, pageSize, debouncedKeyword)
@@ -74,12 +76,14 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
         setRecords(response.data.items || [])
         setTotal(response.data.total || 0)
       } else {
+        setError(true)
         handleServerError(response, i18next.t('Failed to load billing history'))
         setRecords([])
         setTotal(0)
       }
     } catch (error) {
       if (requestId !== requestIdRef.current) return
+      setError(true)
       handleServerError(error, i18next.t('Failed to load billing history'))
       setRecords([])
       setTotal(0)
@@ -155,6 +159,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
 
   return {
     records,
+    error,
     total,
     page,
     pageSize,

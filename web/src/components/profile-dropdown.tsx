@@ -17,10 +17,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useNavigate } from '@tanstack/react-router'
-import { User, Wallet, LogOut, Settings, ShieldCheck } from 'lucide-react'
+import {
+  User,
+  Wallet,
+  LogOut,
+  Settings,
+  ShieldCheck,
+  Languages,
+} from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { LanguageMenuItems } from '@/components/language-switcher'
 import { SignOutDialog } from '@/components/sign-out-dialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -29,8 +37,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useIsAdmin } from '@/hooks/use-admin'
 import useDialogState from '@/hooks/use-dialog'
 import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
 import { useUserDisplay } from '@/hooks/use-user-display'
@@ -42,6 +54,7 @@ const avatarFallbackClassName = 'font-semibold text-white'
 
 export function ProfileDropdown() {
   const { t } = useTranslation()
+  const isAdmin = useIsAdmin()
   const navigate = useNavigate()
   const [open, setOpen] = useDialogState()
   const user = useAuthStore((state) => state.auth.user)
@@ -60,7 +73,15 @@ export function ProfileDropdown() {
     <>
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger
-          render={<Button variant='ghost' className='relative size-6 p-0' />}
+          render={
+            <Button
+              variant='ghost'
+              className={
+                isAdmin ? 'relative size-6 p-0' : 'relative size-8 p-0'
+              }
+              aria-label={t('Account menu')}
+            />
+          }
         >
           <Avatar className='size-6'>
             <AvatarFallback
@@ -115,10 +136,22 @@ export function ProfileDropdown() {
             </DropdownMenuItem>
           )}
 
+          {!isAdmin && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Languages className='size-4' />
+                {t('Change language')}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <LanguageMenuItems />
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
+
           {isWalletVisible && (
             <DropdownMenuItem onClick={() => navigate({ to: '/wallet' })}>
               <Wallet className='size-4' />
-              {t('Wallet')}
+              {t(isAdmin ? 'Wallet' : 'Online Recharge')}
             </DropdownMenuItem>
           )}
 

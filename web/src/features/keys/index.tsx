@@ -18,7 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { ApiEndpointCard } from '@/components/api-endpoint-card'
 import { SectionPageLayout } from '@/components/layout'
+import { useIsAdmin } from '@/hooks/use-admin'
 
 import { ApiKeysDialogs } from './components/api-keys-dialogs'
 import { ApiKeysPrimaryButtons } from './components/api-keys-primary-buttons'
@@ -27,6 +29,7 @@ import { ApiKeysTable } from './components/api-keys-table'
 
 export function ApiKeys() {
   const { t } = useTranslation()
+  const isAdmin = useIsAdmin()
   return (
     <ApiKeysProvider>
       <SectionPageLayout fixedContent>
@@ -35,7 +38,16 @@ export function ApiKeys() {
           <ApiKeysPrimaryButtons />
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <ApiKeysTable />
+          <div className='flex h-full min-h-0 flex-col gap-5'>
+            {!isAdmin && (
+              <div className='shrink-0'>
+                <ApiEndpointCard />
+              </div>
+            )}
+            <div className='min-h-0 flex-1'>
+              <ApiKeysTable />
+            </div>
+          </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>
 

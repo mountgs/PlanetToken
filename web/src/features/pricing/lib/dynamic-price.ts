@@ -46,6 +46,8 @@ import {
 import { getTaskPricingDisplayTiers } from './task-matrix-display'
 
 export type DynamicPriceOptions = {
+  /** A full catalog explicitly shows cache reads even when charged at input price. */
+  includeInputPriceCacheRead?: boolean
   tokenUnit: TokenUnit
   showCurrencySymbol?: boolean
   showRechargePrice?: boolean
@@ -348,6 +350,7 @@ export function getDynamicPriceEntries(
     // explicit zero prices visible, even when the input itself is free.
     if (
       variable.key === 'cr' &&
+      !options.includeInputPriceCacheRead &&
       value !== 0 &&
       value === (tier as ParsedTier).inputPrice
     ) {

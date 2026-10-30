@@ -16,12 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useLayoutEffect } from 'react'
+
 import { CommandMenu } from '@/components/command-menu'
 import { AnimatedOutlet } from '@/components/page-transition'
 import { SkipToMain } from '@/components/skip-to-main'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { LayoutProvider } from '@/context/layout-provider'
 import { SearchProvider } from '@/context/search-provider'
+import { useIsAdmin } from '@/hooks/use-admin'
 import { getCookie } from '@/lib/cookies'
 import { cn } from '@/lib/utils'
 
@@ -34,13 +37,36 @@ type AuthenticatedLayoutProps = {
 
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
+  const isAdmin = useIsAdmin()
+
+  // Theme on the document also covers portalled dialogs and menus.
+  useLayoutEffect(() => {
+    if (isAdmin) return
+    document.documentElement.dataset.customerUi = 'true'
+    return () => {
+      delete document.documentElement.dataset.customerUi
+    }
+  }, [isAdmin])
 
   return (
     <LayoutProvider>
       <SearchProvider>
-        <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
+        <SidebarProvider
+          defaultOpen={defaultOpen}
+          className={cn('flex-col', !isAdmin && 'customer-shell')}
+          style={
+            isAdmin
+              ? undefined
+              : ({ '--sidebar-width': '15rem' } as React.CSSProperties)
+          }
+        >
           <SkipToMain />
-          <AppHeader />
+          <AppHeader
+            customer={!isAdmin}
+            showSearch={isAdmin}
+            showConfigDrawer={isAdmin}
+            showTopNav={isAdmin}
+          />
           <div className='flex min-h-0 w-full flex-1'>
             <AppSidebar />
             <SidebarInset

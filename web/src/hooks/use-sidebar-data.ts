@@ -39,8 +39,12 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { getCustomerNavigation } from '@/components/layout/lib/customer-navigation'
 import type { SidebarData } from '@/components/layout/types'
+import { useStatus } from '@/hooks/use-status'
+import { getModuleAccessFromStatus } from '@/lib/nav-modules'
 import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -50,6 +54,23 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  const { status } = useStatus()
+  const role = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
+
+  if (role < ROLE.ADMIN) {
+    const navigation = getCustomerNavigation(t)
+    if (
+      !getModuleAccessFromStatus(
+        status as Record<string, unknown> | null,
+        'pricing'
+      ).enabled
+    ) {
+      navigation.navGroups[0].items = navigation.navGroups[0].items.filter(
+        (item) => item.url !== '/catalog'
+      )
+    }
+    return navigation
+  }
 
   return {
     navGroups: [

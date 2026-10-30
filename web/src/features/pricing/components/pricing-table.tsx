@@ -32,6 +32,7 @@ import type { PricingModel, TokenUnit } from '../types'
 import { usePricingColumns } from './pricing-columns'
 
 export interface PricingTableProps {
+  customer?: boolean
   models: PricingModel[]
   isLoading?: boolean
   priceRate?: number
@@ -61,6 +62,8 @@ export function PricingTable(props: PricingTableProps) {
   })
 
   const columns = usePricingColumns({
+    customer: props.customer,
+    onModelClick,
     tokenUnit,
     priceRate,
     usdExchangeRate,

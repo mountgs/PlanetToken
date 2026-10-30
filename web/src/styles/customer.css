@@ -1,0 +1,144 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+/* Customer design tokens. Administrator themes keep their existing cascade. */
+:root[data-customer-ui='true'] {
+  --radius: 0.5rem;
+  --background: #faf9f6;
+  --foreground: #302f2b;
+  --card: #ffffff;
+  --card-foreground: #302f2b;
+  --popover: #ffffff;
+  --popover-foreground: #302f2b;
+  --primary: #ad4d30;
+  --primary-foreground: #ffffff;
+  --secondary: #f1ede7;
+  --secondary-foreground: #443e36;
+  --muted: #f3f1ec;
+  --muted-foreground: #716b62;
+  --accent: #f5e8e0;
+  --accent-foreground: #934026;
+  --border: #e5e1d9;
+  --input: #ded9d0;
+  --ring: #ad4d30;
+  --sidebar: #f5f3ee;
+  --sidebar-foreground: #5b554c;
+  --sidebar-primary: #ad4d30;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #efe2d9;
+  --sidebar-accent-foreground: #934026;
+  --sidebar-border: #e5e1d9;
+  --sidebar-ring: #ad4d30;
+  --chart-1: #ad4d30;
+  --chart-2: #698473;
+  --chart-3: #b99252;
+  --chart-4: #7774a1;
+  --chart-5: #537e91;
+  --font-ui-sans: 'Public Sans Variable', 'Microsoft YaHei', sans-serif;
+  --font-body: 'Public Sans Variable', 'Microsoft YaHei', sans-serif;
+}
+
+:root.dark[data-customer-ui='true'] {
+  --background: #211f1c;
+  --foreground: #f0ece4;
+  --card: #2a2723;
+  --card-foreground: #f0ece4;
+  --popover: #302c27;
+  --popover-foreground: #f0ece4;
+  --primary: #df987a;
+  --primary-foreground: #29160e;
+  --muted: #322e28;
+  --muted-foreground: #bab2a6;
+  --secondary: #383128;
+  --secondary-foreground: #f0ece4;
+  --accent: #493328;
+  --accent-foreground: #f2b99f;
+  --border: #433d34;
+  --input: #51483d;
+  --ring: #df987a;
+  --sidebar: #26231f;
+  --sidebar-foreground: #d4cabc;
+  --sidebar-accent: #493328;
+  --sidebar-accent-foreground: #f2b99f;
+  --sidebar-border: #433d34;
+}
+
+.customer-shell {
+  --sidebar-width: 15rem;
+}
+
+:root[data-customer-ui='true'] [data-slot='sidebar-inner'] {
+  padding-block: 1rem;
+}
+
+:root[data-customer-ui='true'] [data-slot='sidebar-menu-button'] {
+  min-height: 2.65rem;
+  padding-inline: 0.85rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+
+:root[data-customer-ui='true'] [data-slot='sidebar-group'] {
+  padding-inline: 1rem;
+}
+:root[data-customer-ui='true'] [data-slot='sidebar-group-label'] {
+  margin-bottom: 0.5rem;
+}
+.customer-shell [data-slot='sidebar-inset'] {
+  background: var(--background);
+}
+.customer-shell [data-slot='section-heading'] {
+  padding: 2rem 2rem 1.25rem;
+}
+.customer-shell [data-slot='section-heading'] h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+.customer-shell [data-slot='section-content'] {
+  padding: 0 2rem 1.5rem;
+}
+.customer-shell [data-slot='card'] {
+  box-shadow: none;
+  border-radius: 0.75rem;
+}
+.customer-shell [data-slot='table-container'] {
+  background: var(--card);
+}
+.customer-shell [data-slot='table-head'] {
+  background: var(--muted);
+}
+.customer-shell [data-slot='table-cell'] {
+  padding-block: 0.9rem;
+}
+
+@media (max-width: 767px) {
+  .customer-shell [data-slot='section-heading'] {
+    padding: 1.25rem 1rem 1rem;
+  }
+  .customer-shell [data-slot='section-heading'] h2 {
+    font-size: 1.25rem;
+  }
+  .customer-shell [data-slot='section-content'] {
+    padding: 0 1rem 1rem;
+  }
+}
+
+.customer-shell > header {
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}

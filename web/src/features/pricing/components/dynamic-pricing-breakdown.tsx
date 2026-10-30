@@ -49,6 +49,7 @@ import { formatBillingCondition } from '../lib/billing-expression/condition-disp
 import { compileBillingExpression } from '../lib/billing-expression/parser'
 import { isBreakdownTierMatched } from '../lib/breakdown-tier-match'
 import {
+  formatDynamicUnitPrice,
   formatTaskUsageUnitPrice,
   type DynamicPriceLabelKind,
   type DynamicPriceOptions,
@@ -64,6 +65,9 @@ import type { BillingUsageSchema, BillingUsageUnit } from '../types'
 
 type DynamicPricingBreakdownProps = {
   billingExpr: string | null | undefined
+  /** Catalog prices include the selected key's group and display currency. */
+  priceOptions?: DynamicPriceOptions
+  showExpression?: boolean
   /**
    * Label of the tier that fired for the current request. When provided,
    * the corresponding row is highlighted and tagged as "Matched". Used by
@@ -201,14 +205,25 @@ function formatBreakdownPrice(
   rate: number,
   t: (key: string) => string,
   taskPriceOptions: DynamicPricingBreakdownProps['taskPriceOptions'],
-  language: string
+  language: string,
+  priceOptions?: DynamicPriceOptions
 ): string {
-  const amount =
+  let amount: string
+  if (
     field.labelKind === 'schema' ||
     field.unit === 'request' ||
     field.unit === 'image'
-      ? formatTaskUsageUnitPrice(value, { tokenUnit: 'M', ...taskPriceOptions })
-      : `${symbol}${(value * rate).toFixed(4)}`
+  ) {
+    amount = formatTaskUsageUnitPrice(value, {
+      tokenUnit: 'M',
+      ...taskPriceOptions,
+      ...priceOptions,
+    })
+  } else if (priceOptions) {
+    amount = formatDynamicUnitPrice(value, priceOptions)
+  } else {
+    amount = `${symbol}${(value * rate).toFixed(4)}`
+  }
   if (field.unit === 'second') return `${amount}/${t('s')}`
   if (field.unit === 'count') {
     return `${amount}/${taskUsageUnitLabel(field, language, t('unit'))}`
@@ -290,6 +305,8 @@ export function DynamicPricingBreakdown({
   usageSchema,
   taskPriceOptions,
   usageFacts,
+  priceOptions,
+  showExpression = true,
 }: DynamicPricingBreakdownProps) {
   const { t, i18n } = useTranslation()
   const expr = billingExpr || ''
@@ -358,12 +375,21 @@ export function DynamicPricingBreakdown({
             </div>
           </div>
         )}
-        <div className='text-muted-foreground mb-1 text-[10px] font-medium tracking-wider uppercase'>
-          {t('Raw expression')}
-        </div>
-        <code className='text-muted-foreground block text-xs break-all'>
-          {expr}
-        </code>
+        {showExpression && (
+          <>
+            <div className='text-muted-foreground mb-1 text-[10px] font-medium tracking-wider uppercase'>
+              {t('Raw expression')}
+            </div>
+            <code className='text-muted-foreground block text-xs break-all'>
+              {expr}
+            </code>
+          </>
+        )}
+        {!showExpression && (
+          <p className='text-muted-foreground text-sm'>
+            {t(pricingDisplayFallbackKey(expr, usageSchema))}
+          </p>
+        )}
       </section>
     )
   }
@@ -379,7 +405,10 @@ export function DynamicPricingBreakdown({
             tiers.some(
               (tier) =>
                 isTaskBreakdownTier(tier) &&
-                Number(tier.unitPrices[field] || 0) > 0
+                (priceOptions
+                  ? Number.isFinite(tier.unitPrices[field]) &&
+                    tier.unitPrices[field] >= 0
+                  : Number(tier.unitPrices[field] || 0) > 0)
             )
         )
         .sort(([left], [right]) => left.localeCompare(right))
@@ -390,7 +419,11 @@ export function DynamicPricingBreakdown({
           unit: definition.unit as BillingUsageUnit,
           unitLabel: definition.unitLabel,
           value: (tier: BreakdownTier) =>
-            isTaskBreakdownTier(tier) ? Number(tier.unitPrices[field] || 0) : 0,
+            isTaskBreakdownTier(tier)
+              ? Number(
+                  tier.unitPrices[field] ?? (priceOptions ? Number.NaN : 0)
+                )
+              : 0,
         }))
       if (
         tiers.some((tier) => isTaskBreakdownTier(tier) && tier.constant > 0)
@@ -412,7 +445,12 @@ export function DynamicPricingBreakdown({
         return tiers.some(
           (tier) =>
             !isTaskBreakdownTier(tier) &&
-            Number(tier[variable.field as string as keyof ParsedTier] || 0) > 0
+            (priceOptions
+              ? typeof tier[variable.field as string] === 'number' &&
+                Number(tier[variable.field as string]) >= 0
+              : Number(
+                  tier[variable.field as string as keyof ParsedTier] || 0
+                ) > 0)
         )
       }
     ).map((variable, index) => ({
@@ -423,7 +461,10 @@ export function DynamicPricingBreakdown({
       value: (tier: BreakdownTier) =>
         isTaskBreakdownTier(tier)
           ? 0
-          : Number(tier[variable.field as string as keyof ParsedTier] || 0),
+          : Number(
+              tier[variable.field as string as keyof ParsedTier] ??
+                (priceOptions ? Number.NaN : 0)
+            ),
     }))
     if (
       tiers.some(
@@ -558,6 +599,9 @@ export function DynamicPricingBreakdown({
                             )}
                           >
                             {value > 0 ||
+                            (priceOptions &&
+                              Number.isFinite(value) &&
+                              value >= 0) ||
                             ((field.unit === 'request' ||
                               field.unit === 'image') &&
                               Number.isFinite(value))
@@ -568,7 +612,8 @@ export function DynamicPricingBreakdown({
                                   rate,
                                   t,
                                   taskPriceOptions,
-                                  i18n.language
+                                  i18n.language,
+                                  priceOptions
                                 )
                               : '-'}
                           </div>
@@ -675,6 +720,7 @@ export function DynamicPricingBreakdown({
                 cell: (tier: BreakdownTier) => {
                   const value = field.value(tier)
                   return value > 0 ||
+                    (priceOptions && Number.isFinite(value) && value >= 0) ||
                     ((field.unit === 'request' || field.unit === 'image') &&
                       Number.isFinite(value)) ? (
                     <span className={cn(!compact && 'font-semibold')}>
@@ -685,7 +731,8 @@ export function DynamicPricingBreakdown({
                         rate,
                         t,
                         taskPriceOptions,
-                        i18n.language
+                        i18n.language,
+                        priceOptions
                       )}
                     </span>
                   ) : (

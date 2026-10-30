@@ -17,9 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { useTranslation } from 'react-i18next'
 
-import { Sidebar, SidebarContent, SidebarRail } from '@/components/ui/sidebar'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarRail,
+  SidebarFooter,
+} from '@/components/ui/sidebar'
 import { useLayout } from '@/context/layout-provider'
+import { useIsAdmin } from '@/hooks/use-admin'
 import { useSidebarView } from '@/hooks/use-sidebar-view'
 import { MOTION_TRANSITION, MOTION_VARIANTS } from '@/lib/motion'
 
@@ -44,6 +51,8 @@ import { SidebarViewHeader } from './sidebar-view-header'
  * in the registry; this component requires no changes.
  */
 export function AppSidebar() {
+  const isAdmin = useIsAdmin()
+  const { t } = useTranslation()
   const { collapsible, variant } = useLayout()
   const { key, view, navGroups } = useSidebarView()
   const shouldReduce = useReducedMotion()
@@ -71,6 +80,29 @@ export function AppSidebar() {
         </AnimatePresence>
       </SidebarContent>
 
+      {!isAdmin && (
+        <SidebarFooter className='border-t p-4 text-xs group-data-[collapsible=icon]:hidden'>
+          <p className='text-muted-foreground'>
+            Powered by{' '}
+            <a
+              className='underline underline-offset-2'
+              href='https://github.com/QuantumNous/new-api'
+              target='_blank'
+              rel='noopener noreferrer'
+            >
+              New API
+            </a>
+          </p>
+          <a
+            href={import.meta.env.VITE_SOURCE_URL}
+            target='_blank'
+            rel='noopener noreferrer'
+            className='text-muted-foreground mt-1 underline underline-offset-2'
+          >
+            {t('Source code')} · AGPL-3.0
+          </a>
+        </SidebarFooter>
+      )}
       <SidebarRail />
     </Sidebar>
   )

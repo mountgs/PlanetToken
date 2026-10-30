@@ -37,6 +37,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { ModelsChartPreferences } from './components/models/models-chart-preferences'
 import { ModelsFilter } from './components/models/models-filter-dialog'
+import { CustomerOverview } from './components/overview/customer-overview'
 import { OverviewDashboard } from './components/overview/overview-dashboard'
 import { DEFAULT_TIME_GRANULARITY } from './constants'
 import {
@@ -253,7 +254,7 @@ export function Dashboard() {
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
-        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
+        (section) => section !== 'overview' && (isAdmin || section === 'models')
       ),
     [isAdmin]
   )
@@ -323,7 +324,7 @@ export function Dashboard() {
   const sectionActions = modelActions ?? flowActions
 
   if (activeSection === 'overview') {
-    return <OverviewDashboard />
+    return isAdmin ? <OverviewDashboard /> : <CustomerOverview />
   }
 
   return (

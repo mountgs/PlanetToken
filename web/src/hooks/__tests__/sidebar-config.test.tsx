@@ -55,7 +55,7 @@ function sidebarFor(admin?: object, user?: object, canConfigure = true) {
   useAuthStore.getState().auth.setUser({
     id: 1,
     username: 'alice',
-    role: 1,
+    role: 10,
     permissions: { sidebar_settings: canConfigure },
     sidebar_modules: user ? JSON.stringify(user) : '',
   })
