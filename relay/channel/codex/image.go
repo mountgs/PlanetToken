@@ -122,20 +122,18 @@ func buildCodexImageResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo
 		return dto.OpenAIResponsesRequest{}, err
 	}
 
+	// Let the upstream choose compatible reasoning defaults. A fixed effort can
+	// force an unsupported image complexity even when image quality is "low".
 	return dto.OpenAIResponsesRequest{
 		Model:             model_setting.GetCodexImagesMainModel(),
 		Input:             inputRaw,
 		Instructions:      json.RawMessage(`""`),
 		Include:           includeRaw,
 		ParallelToolCalls: json.RawMessage(`true`),
-		Reasoning: &dto.Reasoning{
-			Effort:  "medium",
-			Summary: "auto",
-		},
-		Store:      json.RawMessage(`false`),
-		Stream:     common.GetPointer(true),
-		ToolChoice: toolChoiceRaw,
-		Tools:      toolsRaw,
+		Store:             json.RawMessage(`false`),
+		Stream:            common.GetPointer(true),
+		ToolChoice:        toolChoiceRaw,
+		Tools:             toolsRaw,
 	}, nil
 }
 

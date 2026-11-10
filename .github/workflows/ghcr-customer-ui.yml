@@ -1,8 +1,8 @@
-name: Publish customer UI image
+name: Publish image reasoning fix
 
 on:
   push:
-    branches: [codex/customer-ui-rightapi]
+    branches: [codex/fix-image-reasoning-20261110]
     paths: [.github/workflows/ghcr-customer-ui.yml]
   workflow_dispatch:
 
@@ -39,13 +39,14 @@ jobs:
         run: |
           mkdir -p web/dist
           touch web/dist/index.html
+          go test -p 1 ./relay/channel/codex -count=1 -timeout 3m
           go test -p 1 ./router -count=1 -timeout 3m
           go test -p 1 ./controller -run 'TestGetContactRevalidatesAdministratorContent|TestTaskLogDTOHidesMappedModelFromUsers' -count=1 -timeout 3m
           go test -p 1 ./model -run 'TestFormat(User|Admin)Logs' -count=1 -timeout 3m
       - name: Set image version
         id: version
         run: |
-          VERSION="customer-ui-20261030-${GITHUB_SHA::9}"
+          VERSION="image-reasoning-20261110-${GITHUB_SHA::9}"
           printf '%s' "$VERSION" > VERSION
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Set up Docker Buildx

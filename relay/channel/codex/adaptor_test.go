@@ -489,6 +489,7 @@ func TestBuildCodexImageGenerationResponsesRequest(t *testing.T) {
 		Model:          CodexImageModel,
 		Prompt:         "中文海报",
 		Size:           "1024x1024",
+		Quality:        "low",
 		ResponseFormat: "b64_json",
 	})
 	if err != nil {
@@ -500,6 +501,9 @@ func TestBuildCodexImageGenerationResponsesRequest(t *testing.T) {
 	if request.Stream == nil || !*request.Stream {
 		t.Fatalf("expected upstream stream=true")
 	}
+	encoded, err := common.Marshal(request)
+	require.NoError(t, err)
+	assert.False(t, gjson.GetBytes(encoded, "reasoning").Exists(), "image requests must let the upstream select compatible reasoning defaults")
 
 	var tools []map[string]any
 	if err := common.Unmarshal(request.Tools, &tools); err != nil {
@@ -508,6 +512,7 @@ func TestBuildCodexImageGenerationResponsesRequest(t *testing.T) {
 	if tools[0]["type"] != "image_generation" || tools[0]["action"] != "generate" || tools[0]["model"] != CodexImageModel {
 		t.Fatalf("unexpected image tool: %#v", tools[0])
 	}
+	assert.Equal(t, "low", tools[0]["quality"])
 }
 
 func TestBuildCodexImageGenerationResponsesRequestUsesConfiguredMainModel(t *testing.T) {
@@ -569,6 +574,9 @@ func TestBuildCodexImageEditResponsesRequestMultipart(t *testing.T) {
 	if !strings.Contains(string(request.Input), "data:image/png;base64,") {
 		t.Fatalf("input does not include multipart image data URL: %s", request.Input)
 	}
+	encoded, err := common.Marshal(request)
+	require.NoError(t, err)
+	assert.False(t, gjson.GetBytes(encoded, "reasoning").Exists(), "image edits must let the upstream select compatible reasoning defaults")
 
 	var tools []map[string]any
 	if err := common.Unmarshal(request.Tools, &tools); err != nil {
