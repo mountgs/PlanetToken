@@ -14,7 +14,9 @@
       "id": "feat-config-git",
       "name": "配置与文档独立仓库",
       "description": "部署配置、脚本、文档推送到 mountgs/NewapiConfig",
-      "dependencies": ["feat-prod-pack"],
+      "dependencies": [
+        "feat-prod-pack"
+      ],
       "status": "done",
       "evidence": "git@github.com:mountgs/NewapiConfig.git main 776c53b"
     },
@@ -22,7 +24,9 @@
       "id": "feat-live-001",
       "name": "服务器连通与环境检查",
       "description": "SSH 连通与环境检查（主机/端口见私密运维记录）",
-      "dependencies": ["feat-prod-pack"],
+      "dependencies": [
+        "feat-prod-pack"
+      ],
       "status": "done",
       "evidence": "ping/SSH 通（细节不入库）；curl 127.0.0.1:3000/api/status success:true"
     },
@@ -30,7 +34,9 @@
       "id": "feat-relay-docs-001",
       "name": "中转站客户端接入文档",
       "description": "Claude Code/Codex/CC Switch/Cursor 接入；HTTPS 与端口安全说明",
-      "dependencies": ["feat-live-001"],
+      "dependencies": [
+        "feat-live-001"
+      ],
       "status": "done",
       "evidence": "docs/installation/relay-client-integration.md; curl {SERVER_HOST}/api/status success:true"
     },
@@ -38,7 +44,9 @@
       "id": "feat-live-002",
       "name": "按文档完成 Docker 部署",
       "description": "bootstrap-on-server.sh 或 deploy-prod.sh",
-      "dependencies": ["feat-live-001"],
+      "dependencies": [
+        "feat-live-001"
+      ],
       "status": "not-started",
       "evidence": ""
     },
@@ -46,7 +54,9 @@
       "id": "feat-live-003",
       "name": "nginx HTTPS 与可访问性",
       "description": "宝塔反代 + SSL（需域名），verify-deployment.sh --url",
-      "dependencies": ["feat-live-002"],
+      "dependencies": [
+        "feat-live-002"
+      ],
       "status": "not-started",
       "evidence": ""
     },
@@ -54,7 +64,9 @@
       "id": "feat-live-004",
       "name": "运维操作文档",
       "description": "operations.md + server-go-live.md",
-      "dependencies": ["feat-prod-pack"],
+      "dependencies": [
+        "feat-prod-pack"
+      ],
       "status": "done",
       "evidence": "docs/installation/operations.md, docs/installation/server-go-live.md"
     },
@@ -62,7 +74,9 @@
       "id": "feat-live-005",
       "name": "备份演练",
       "description": "backup-db.sh 成功",
-      "dependencies": ["feat-live-003"],
+      "dependencies": [
+        "feat-live-003"
+      ],
       "status": "not-started",
       "evidence": ""
     },
@@ -70,7 +84,9 @@
       "id": "feat-codex-001",
       "name": "Codex Plus 渠道配置",
       "description": "创建 ChatGPT Subscription (Codex) 渠道，导入 OAuth JSON，配置模型/分组/权重",
-      "dependencies": ["feat-live-001"],
+      "dependencies": [
+        "feat-live-001"
+      ],
       "status": "done",
       "evidence": "2026-07-10: Codex 渠道已建；gpt-5.4/gpt-5.5 渠道测试通过（用户确认）",
       "verification": {
@@ -88,7 +104,9 @@
       "id": "feat-codex-002",
       "name": "Codex 系统策略",
       "description": "渠道亲和 codex cli trace、模型倍率、分组映射；chat→responses 保持关闭",
-      "dependencies": ["feat-codex-001"],
+      "dependencies": [
+        "feat-codex-001"
+      ],
       "status": "done",
       "evidence": "2026-07-10: gpt-5.4/5.5 + compact 四模型倍率已配置；模型列表含 gpt-5.4/5.5 及 compact 变体",
       "verification": {
@@ -107,7 +125,9 @@
       "id": "feat-codex-003",
       "name": "Codex 用户令牌",
       "description": "创建测试用户与 sk- 令牌，绑定分组并设置额度",
-      "dependencies": ["feat-codex-002"],
+      "dependencies": [
+        "feat-codex-002"
+      ],
       "status": "done",
       "evidence": "2026-07-10: sk- 令牌 auth+relay 验收通过（/v1/models 200，含 gpt-5.4/5.5/compact）",
       "verification": {
@@ -127,7 +147,9 @@
       "id": "feat-codex-004",
       "name": "Codex Relay E2E 自动化校验",
       "description": "verify-codex-relay.sh 全阶段 PASS：/v1/responses 同步+流式",
-      "dependencies": ["feat-codex-003"],
+      "dependencies": [
+        "feat-codex-003"
+      ],
       "status": "blocked",
       "evidence": "2026-07-10: gpt-5.4/5.5 stream:true E2E PASS；stream:false 上游要求 streaming；verify 脚本 sync 用例需更新。2026-08-12: 剩余全阶段 E2E 需要生产 RELAY_URL/RELAY_TOKEN，暂时阻塞并让出唯一活动功能。",
       "verification": {
@@ -142,7 +164,9 @@
       "id": "feat-codex-005",
       "name": "Codex CLI 客户端验收",
       "description": "终端 Codex CLI + config.toml/auth.json 或 CC Switch 导入，人工对话验收",
-      "dependencies": ["feat-codex-004"],
+      "dependencies": [
+        "feat-codex-004"
+      ],
       "status": "not-started",
       "evidence": "",
       "verification": {
@@ -161,7 +185,9 @@
       "id": "feat-codex-006",
       "name": "Codex 运维监控基线",
       "description": "OAuth 刷新监控、Plus 用量巡检、备份策略文档化",
-      "dependencies": ["feat-codex-004"],
+      "dependencies": [
+        "feat-codex-004"
+      ],
       "status": "not-started",
       "evidence": "",
       "verification": {
@@ -180,7 +206,9 @@
       "id": "feat-codex-007",
       "name": "Codex Plus gpt-image-2 图片接口",
       "description": "将标准 /v1/images/generations 与 /v1/images/edits 转换为 Codex Responses image_generation 工具调用",
-      "dependencies": ["feat-codex-001"],
+      "dependencies": [
+        "feat-codex-001"
+      ],
       "status": "done",
       "evidence": "2026-07-30: 移植 QuantumNous/new-api 0bc23d4 并适配当前 main；Codex 与 relay constant 定向测试通过",
       "verification": {
@@ -198,7 +226,9 @@
       "id": "feat-codex-image-stream-epic",
       "name": "Codex Image 2 流式生成与保活",
       "description": "在现有 Codex Images JSON 实现上增量增加显式 stream:true、Images SSE 事件转换、心跳、取消、重试边界和按次计费保护；完整契约见 docs/requirements/codex-image-streaming.md",
-      "dependencies": ["feat-codex-007"],
+      "dependencies": [
+        "feat-codex-007"
+      ],
       "status": "in-progress",
       "evidence": "2026-08-13: 需求契约和流式实现已完成，定向自动化测试通过；生产代理链路验收仍待执行。",
       "verification": {
@@ -217,7 +247,9 @@
       "id": "feat-codex-image-stream-001",
       "name": "Images 流式请求契约与参数校验",
       "description": "仅在显式 stream:true 时启用 SSE；保持 stream 缺失/false 的 JSON 行为；校验 partial_images 为 0..3 且默认 0",
-      "dependencies": ["feat-codex-007"],
+      "dependencies": [
+        "feat-codex-007"
+      ],
       "status": "done",
       "evidence": "2026-08-13: 仅显式 stream:true 启用；partial_images JSON/multipart 校验 0..3。Go 1.25.1 定向测试与受影响包测试 PASS。",
       "verification": {
@@ -232,7 +264,9 @@
       "id": "feat-codex-image-stream-002",
       "name": "Codex 图片专用 SSE frame 处理器",
       "description": "增量解析完整 SSE frame，支持 event、多行 data、注释、[DONE] 和 128 MiB 上限；流式路径移除整流 io.ReadAll",
-      "dependencies": ["feat-codex-image-stream-001"],
+      "dependencies": [
+        "feat-codex-image-stream-001"
+      ],
       "status": "done",
       "evidence": "2026-08-13: Codex 专用完整 SSE frame decoder 支持 event、多行 data、注释、CRLF、[DONE]、EOF 前交付及 128 MiB 上限；frame/SSE/large/EOF 定向测试 PASS。",
       "verification": {
@@ -247,7 +281,9 @@
       "id": "feat-codex-image-stream-003",
       "name": "Images SSE 事件转换与串行输出",
       "description": "将 Codex Responses 图片事件转换为 generation/edit 的 partial/completed/error 事件，单 writer loop 串行 Flush，完成后发送 [DONE]",
-      "dependencies": ["feat-codex-image-stream-002"],
+      "dependencies": [
+        "feat-codex-image-stream-002"
+      ],
       "status": "done",
       "evidence": "2026-08-13: generation/edit partial/completed/error 映射、data URL、串行 writer/Flush 和 [DONE] 已实现；事件映射与输出定向测试 PASS。",
       "verification": {
@@ -262,7 +298,9 @@
       "id": "feat-codex-image-stream-004",
       "name": "独立图片流心跳配置",
       "description": "新增 IMAGE_STREAM_PING_INTERVAL，默认 10 秒、0 禁用、有效范围 5..60；仅影响 Codex Images stream:true",
-      "dependencies": ["feat-codex-image-stream-002"],
+      "dependencies": [
+        "feat-codex-image-stream-002"
+      ],
       "status": "done",
       "evidence": "2026-08-13: IMAGE_STREAM_PING_INTERVAL 启动校验与可注入 timer 已实现，默认 10、0 禁用、5..60；心跳/配置定向测试 PASS。",
       "verification": {
@@ -295,7 +333,9 @@
       "id": "feat-codex-image-stream-006",
       "name": "流式图片按次计费与回归验收",
       "description": "固定价格按 ModelPrice*n*GroupRatio 预扣；正常完成按实际 completed 结算；断连按请求 n 保守计费；完成定向、全量和生产 E2E 证据",
-      "dependencies": ["feat-codex-image-stream-005"],
+      "dependencies": [
+        "feat-codex-image-stream-005"
+      ],
       "status": "blocked",
       "evidence": "2026-08-13: 固定价计费、完成数结算和断连保护的代码与自动化测试已完成；生产 Nginx/CDN 验收尚未执行。",
       "verification": {
@@ -315,7 +355,9 @@
       "id": "feat-codex-image-stream-007",
       "name": "Image 2 上游错误可解释透传",
       "description": "参考 Sub2API 的错误建模，为 Codex Image 2 白名单提取并脱敏透传 message/type/code/param；识别 response.failed、response.error、response.incomplete 和无图拒绝文本，同时保持既有计费与渠道重试语义。",
-      "dependencies": ["feat-codex-image-stream-005"],
+      "dependencies": [
+        "feat-codex-image-stream-005"
+      ],
       "status": "in-progress",
       "evidence": "2026-08-13: 结构化错误、脱敏、content_filter 分类和 completed 无图拒绝文本回归测试通过；init.sh 在当前 Windows Bash 环境因 PATH 未配置 go 而阻断。",
       "verification": {
@@ -335,7 +377,9 @@
       "id": "feat-codex-008",
       "name": "Responses 输出前瞬时失败重试与渠道故障转移",
       "description": "参考 sub2api，在 Codex Responses HTTP 200 SSE 的语义输出前识别 capacity 等瞬时失败；同渠道重试五次后排除并切换渠道，支持请求总时限、模型级渠道冷却、亲和迁移和可审计重试链。",
-      "dependencies": ["feat-codex-001"],
+      "dependencies": [
+        "feat-codex-001"
+      ],
       "status": "done",
       "evidence": "2026-09-08: 已实现 1+5 同渠道指数退避、Retry-After、60 秒预算、失败渠道排除与跨渠道故障转移；Codex Responses 流式/非流式 HTTP 200 SSE capacity 识别、语义输出边界、Redis+本地冷却、亲和迁移、单次结算和重试审计链均有定向测试。Windows Go 与 WSL 挂载路径定向测试、relaykit 全量测试、前端生产构建通过。",
       "verification": {
@@ -368,6 +412,15 @@
       "status": "in-progress",
       "dependencies": [],
       "evidence": "2026-10-30: Customer redesign plus configurable Contact Us (/contact; root admin Site Settings/contact) implemented in isolated PlanetToken-customer-ui. Contact Markdown/links/multiple hosted QR images, preview, empty/loading/error/retry and persistent Contact option; existing option auth/storage and sanitized renderer reused. Four token-price columns, billing-method filter and tier/condition details preserve selected-key group/currency, zero/missing values and request units. 77 frontend cases across six suites pass (final pricing 11/11, contact editor 4/4). Typecheck 1,430 files, changed-file lint 54 TS files, protected-header-safe format, diff check and production build pass. Contact controller test and full router package pass. Full Go run non-green: controller Windows SQLite open-file cleanup failures and 90s timeout; new public-route coverage omission fixed and router rerun passes. New browser verification blocked by runtime initialization error 3; previous 10-29 fixture QA is historical. Latest fixture preview runs at 127.0.0.1:4191; no schema/dependency changes, commits, push or deployment. Keep in-progress under verification gate. Publish exact modified source/configure VITE_SOURCE_URL before release. Evidence in progress.md/session-handoff.md and customer-ui-verification logs. Follow-up: user chose original Playground as Online Chat; customer link now /playground and original authenticated route/module guard restored. 23 navigation/sidebar/route regression cases pass, typecheck 1,431 files, changed-file lint 54 TS files and latest build pass. Fixture preview restarted with model choices; real upstream generation remains unverified. See chat-*.log evidence."
+    },
+    {
+      "id": "feat-relay-overload-20261116",
+      "name": "Responses overload failover priority and aligned Nginx timeout",
+      "dependencies": [
+        "feat-codex-008"
+      ],
+      "status": "in-progress",
+      "evidence": "2026-11-16: Red regression reproduced codex.rate_limits metadata committing output before overload. Fixed nonsemantic classification, probe-and-retain alternative routing, fallback backoff, original 503 preservation and opaque-context protection. Eight HTTP scenarios and affected service/codex/openai/relay tests pass on Windows. Existing accounting suite failures reproduced on unchanged production 5cf1963eb; full Windows tests run and remain non-green due existing controller/HTTP2 failures. Production Nginx /v1/ and /openai/ read timeout 1860s applied after isolated 65.069s response test; nginx -t and health pass. Backend Linux baseline comparison, image build and rollout pending."
     }
   ]
 }

@@ -132,3 +132,8 @@ chmod +x scripts/verify-codex-relay.sh
 - [x] verify-codex-relay.sh
 - [x] feature_list feat-codex-001…006
 - [x] 文档交叉链接
+
+
+## Active 2026-11-16 overload repair
+
+Continue branch codex/fix-relay-overload-20261116 in PlanetToken-relay-overload. Implementation and focused tests pass; Nginx 1860s deployed and verified, rollback under /www/wwwroot/new-api/backups/relay-overload-nginx-20261116. Backend Linux image verification and deployment pending. Preserve independent 60s retry window and existing counts (3 cross-channel, 5 original-channel retries). Never switch opaque encrypted/stored contexts or replay semantic output. See progress.md and external relay-overload verification logs. SSH requires -o KexAlgorithms=ecdh-sha2-nistp256 to root@38.147.171.224 port41388. Do not touch dirty PlanetToken-customer-ui checkout.

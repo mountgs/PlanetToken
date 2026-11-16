@@ -79,7 +79,7 @@ func (s *ResponsesRetryState) Wait(ctx context.Context, retryNumber int, retryAf
 	case <-ctx.Done():
 		return false
 	case <-timer.C:
-		return true
+		return ctx.Err() == nil && s.CanStartAnotherAttempt(time.Now())
 	}
 }
 
@@ -179,7 +179,7 @@ func ResponsesEventHasSemanticOutput(payload []byte) bool {
 	root := gjson.ParseBytes(payload)
 	eventType := strings.TrimSpace(root.Get("type").String())
 	switch eventType {
-	case "response.created", "response.queued", "response.in_progress", "response.error", "response.failed", "error":
+	case "codex.rate_limits", "response.created", "response.queued", "response.in_progress", "response.error", "response.failed", "error":
 		return false
 	case "response.completed", "response.done":
 		return true

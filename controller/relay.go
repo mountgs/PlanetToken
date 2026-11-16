@@ -30,6 +30,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/tidwall/gjson"
 )
 
 func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
@@ -195,11 +196,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if responsesRetryEnabled {
 		responsesRetryState = service.NewResponsesRetryState(time.Now())
 	}
+	responsesFailoverAllowed := !responsesRequestHasOpaqueContext(request)
 	var deferredChannelError *types.ChannelError
 	var deferredAPIError *types.NewAPIError
 	finalErrorRecorded := false
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+		if responsesRetryEnabled && retryParam.GetRetry() > 0 &&
+			(c.Request.Context().Err() != nil || !responsesRetryState.CanStartAnotherAttempt(time.Now())) {
+			break
+		}
 		relayInfo.StreamStatus = nil
 		relayInfo.PerformanceBusinessRejection = false
 		relayInfo.PerformanceOutputTokens = 0
@@ -216,6 +222,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 
+		retryNextChannel := false
 		attempt := 0
 		for {
 			attempt++
@@ -267,12 +274,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				break
 			}
 
-			retrySameChannel := service.CanRetryResponsesOnSameChannel(newAPIError, attempt) &&
-				responsesRetryState.CanStartAnotherAttempt(time.Now())
+			retryNextChannel = (newAPIError.StatusCode == http.StatusServiceUnavailable || !service.CanRetryResponsesOnSameChannel(newAPIError, attempt)) && responsesFailoverAllowed &&
+				service.ShouldRetryResponsesOnNextChannel(newAPIError) &&
+				responsesRetryState.CanStartAnotherAttempt(time.Now()) &&
+				shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) &&
+				retryParam.PrepareResponsesFailover(channel.Id)
+			retrySameChannel := !retryNextChannel && !service.GetChannelConstraints(c).SuppressesRetry() &&
+				service.CanRetryResponsesOnSameChannel(newAPIError, attempt) &&
+				c.Request.Context().Err() == nil && responsesRetryState.CanStartAnotherAttempt(time.Now())
 			scope := "exhausted"
 			if retrySameChannel {
 				scope = "same_channel_retry"
-			} else if service.ShouldRetryResponsesOnNextChannel(newAPIError) {
+			} else if retryNextChannel {
 				scope = "channel_failover"
 			}
 			service.AppendResponsesRetryAttempt(c, service.ResponsesRetryAttempt{
@@ -289,12 +302,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			}
 		}
 
-		retryNextChannel := responsesRetryEnabled &&
-			!c.GetBool(constant.ContextKeyResponsesSemanticOutput) &&
-			service.ShouldRetryResponsesOnNextChannel(newAPIError) &&
-			responsesRetryState.CanStartAnotherAttempt(time.Now())
 		if retryNextChannel {
-			retryParam.ExcludeChannel(channel.Id)
 			service.ClearCurrentChannelAffinityCache(c)
 			if service.ShouldRetryResponsesOnSameChannel(newAPIError) {
 				service.MarkResponsesChannelCooldown(channel.Id, relayInfo.OriginModelName, relayInfo.UpstreamModelName)
@@ -425,6 +433,24 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		return nil, newAPIError
 	}
 	return channel, nil
+}
+
+// Stored response references and encrypted reasoning cannot be assumed portable
+// across upstream accounts. Keep their retries on the original channel.
+func responsesRequestHasOpaqueContext(request any) bool {
+	responses, ok := request.(*dto.OpenAIResponsesRequest)
+	if !ok || responses == nil {
+		return false
+	}
+	if responses.PreviousResponseID != "" || (len(responses.Conversation) > 0 && string(responses.Conversation) != "null") {
+		return true
+	}
+	for _, item := range gjson.ParseBytes(responses.Input).Array() {
+		if item.Get("encrypted_content").String() != "" || item.Get("type").String() == "item_reference" {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {

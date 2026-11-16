@@ -728,3 +728,31 @@ func TestConvertOpenAIResponsesRequestDropsPenalties(t *testing.T) {
 	assert.Nil(t, request.FrequencyPenalty)
 	assert.Nil(t, request.PresencePenalty)
 }
+
+func TestHandleResponsesStream_OverloadMetadataBeforeOutputIsRetryable(t *testing.T) {
+	oldTimeout := appconstant.StreamingTimeout
+	appconstant.StreamingTimeout = 30
+	t.Cleanup(func() { appconstant.StreamingTimeout = oldTimeout })
+
+	for _, metadata := range []string{
+		`{"type":"codex.rate_limits","rate_limits":{"primary":{"used_percent":10}}}`,
+		`{"type":"response.output_item.added","item":{"type":"reasoning","summary":[]}}`,
+	} {
+		t.Run(gjson.Get(metadata, "type").String(), func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			body := "data: {\"type\":\"response.created\"}\n\n" +
+				"data: {\"type\":\"response.in_progress\"}\n\n" +
+				"data: " + metadata + "\n\n" +
+				"data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"message\":\"Our servers are currently overloaded. Please try again later.\"}}}\n\n"
+			resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}
+			usage, apiErr := handleResponsesStream(c, resp, &relaycommon.RelayInfo{DisablePing: true})
+			require.Nil(t, usage)
+			require.NotNil(t, apiErr, "overload before output must reach the retry controller")
+			assert.Equal(t, http.StatusServiceUnavailable, apiErr.StatusCode)
+			assert.Empty(t, w.Body.String(), "metadata must stay buffered before failover")
+			assert.False(t, c.GetBool(appconstant.ContextKeyResponsesSemanticOutput))
+		})
+	}
+}

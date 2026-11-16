@@ -1428,3 +1428,119 @@ func TestResponsesWebSocketPreRoutingRejectionsFollowHealthClassification(t *tes
 		})
 	}
 }
+
+func TestResponsesHTTPOverloadFailover(t *testing.T) {
+	require.NoError(t, i18n.Init())
+	previousCooldown := common.ResponsesChannelCooldownSeconds
+	common.ResponsesChannelCooldownSeconds = 0
+	t.Cleanup(func() { common.ResponsesChannelCooldownSeconds = previousCooldown })
+	for _, tc := range []struct {
+		name                                                              string
+		alternative, semantic, exhausted, budgetExpired, noChannelRetries bool
+		contextFields, input                                              string
+		wantOriginal, wantAlternative                                     int64
+	}{
+		{name: "prefer alternative", alternative: true, wantOriginal: 1, wantAlternative: 1},
+		{name: "retry original without alternative", wantOriginal: 2},
+		{name: "never replay semantic output", alternative: true, semantic: true, wantOriginal: 1},
+		{name: "exhausted preserves overload", exhausted: true, wantOriginal: 2},
+		{name: "stored response stays on original", alternative: true, contextFields: `,"previous_response_id":"resp-stored"`, wantOriginal: 2},
+		{name: "encrypted reasoning stays on original", alternative: true, input: `[{"type":"reasoning","encrypted_content":"opaque"}]`, wantOriginal: 2},
+		{name: "expired independent window", alternative: true, budgetExpired: true, wantOriginal: 1},
+		{name: "same channel budget remains independent", alternative: true, noChannelRetries: true, wantOriginal: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := newResponsesWSBillingTest(t, `tier("request", fixed(0.002))`, func(*websocket.Conn, *http.Request) {})
+			previousRetries, previousSame, previousDuration := common.RetryTimes, common.SameChannelRetryTimes, common.ResponsesRetryMaxDurationSeconds
+			common.RetryTimes, common.SameChannelRetryTimes = 3, 1
+			t.Cleanup(func() {
+				common.RetryTimes, common.SameChannelRetryTimes, common.ResponsesRetryMaxDurationSeconds = previousRetries, previousSame, previousDuration
+			})
+			if tc.noChannelRetries {
+				common.RetryTimes = 0
+			}
+			if tc.budgetExpired {
+				common.ResponsesRetryMaxDurationSeconds = 1
+			}
+			var original, alternative atomic.Int64
+			completed := `{"type":"response.completed","response":{"id":"recovered","status":"completed","usage":{"input_tokens":1000,"output_tokens":1,"total_tokens":1001}}}`
+			fixture.httpUpstream = func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				if original.Add(1) > 1 && tc.wantAlternative == 0 && !tc.exhausted {
+					_, _ = fmt.Fprintf(w, "data: %s\n\n", completed)
+					return
+				}
+				if tc.budgetExpired {
+					time.Sleep(1100 * time.Millisecond)
+				}
+				_, _ = fmt.Fprint(w, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"overloaded\"}}\n\n")
+				_, _ = fmt.Fprint(w, "data: {\"type\":\"codex.rate_limits\",\"rate_limits\":{}}\n\n")
+				if tc.semantic {
+					_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n")
+				}
+				_, _ = fmt.Fprint(w, "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"overloaded\",\"status\":\"failed\",\"error\":{\"message\":\"Our servers are currently overloaded. Please try again later.\"}}}\n\n")
+			}
+			key := `{"access_token":"fixture-token","account_id":"fixture-account"}`
+			require.NoError(t, model.DB.Model(fixture.channel).Updates(map[string]any{"type": constant.ChannelTypeCodex, "key": key, "channel_info": model.ChannelInfo{}, "priority": 100}).Error)
+			require.NoError(t, model.DB.Model(&model.Ability{}).Where("channel_id = ?", fixture.channel.Id).Update("priority", 100).Error)
+			if tc.alternative {
+				upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					alternative.Add(1)
+					w.Header().Set("Content-Type", "text/event-stream")
+					_, _ = fmt.Fprintf(w, "data: %s\n\n", completed)
+				}))
+				t.Cleanup(upstream.Close)
+				channel := &model.Channel{Name: "overload-alternative", Key: key, Status: common.ChannelStatusEnabled, Type: constant.ChannelTypeCodex, Group: "default", Models: "ws-billing", BaseURL: &upstream.URL}
+				require.NoError(t, model.DB.Create(channel).Error)
+				require.NoError(t, model.DB.Create(&model.Ability{ChannelId: channel.Id, Model: "ws-billing", Group: "default", Enabled: true}).Error)
+				t.Cleanup(func() {
+					require.NoError(t, model.DB.Where("channel_id = ?", channel.Id).Delete(&model.Ability{}).Error)
+					require.NoError(t, model.DB.Delete(channel).Error)
+				})
+			}
+			input := tc.input
+			if input == "" {
+				input = `"hello"`
+			}
+			request, err := http.NewRequest(http.MethodPost, fixture.gatewayURL+"/v1/responses", strings.NewReader(`{"model":"ws-billing","input":`+input+`,"stream":true`+tc.contextFields+`}`))
+			require.NoError(t, err)
+			request.Header.Set("Authorization", "Bearer sk-"+fixture.token.Key)
+			request.Header.Set("Content-Type", "application/json")
+			response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
+			require.NoError(t, err)
+			body, err := io.ReadAll(response.Body)
+			require.NoError(t, err)
+			require.NoError(t, response.Body.Close())
+			select {
+			case <-fixture.httpDone:
+			case <-time.After(3 * time.Second):
+				t.Fatal("HTTP request did not finish")
+			}
+			assert.Equal(t, tc.wantOriginal, original.Load())
+			assert.Equal(t, tc.wantAlternative, alternative.Load())
+			if tc.exhausted || tc.budgetExpired {
+				assert.Equal(t, http.StatusServiceUnavailable, response.StatusCode)
+				assert.Contains(t, string(body), "overloaded")
+				assert.NotContains(t, string(body), "no available channel")
+				require.Eventually(t, func() bool {
+					var token model.Token
+					return model.DB.First(&token, fixture.token.Id).Error == nil && token.RemainQuota == 3000
+				}, 3*time.Second, 10*time.Millisecond)
+				fixture.closeAndWait(t)
+				assertResponsesWSAccounting(t, fixture, nil)
+				return
+			}
+			assert.Equal(t, http.StatusOK, response.StatusCode)
+			if !tc.semantic {
+				assert.Contains(t, string(body), "recovered")
+				assert.NotContains(t, string(body), "overloaded")
+				fixture.closeAndWait(t)
+				assertResponsesWSAccounting(t, fixture, []int{1000})
+				var log model.Log
+				require.NoError(t, model.LOG_DB.Where("token_id = ? AND type = ?", fixture.token.Id, model.LogTypeConsume).First(&log).Error)
+				assert.Contains(t, log.Other, `"status":"ok"`)
+				assert.NotContains(t, log.Other, `"status":"error"`)
+			}
+		})
+	}
+}

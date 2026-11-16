@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
@@ -49,6 +50,37 @@ type RetryParam struct {
 	Retry              *int
 	ExcludedChannelIDs map[int]struct{}
 	resetNextTry       bool
+	preparedSelection  *responsesChannelSelection
+}
+
+// A failover probe must not consume routing state when no alternative exists.
+// Retain the chosen candidate so the next attempt uses exactly that selection.
+type responsesChannelSelection struct {
+	param   *RetryParam
+	channel *model.Channel
+	group   string
+}
+
+func (p *RetryParam) PrepareResponsesFailover(failedChannelID int) bool {
+	if p == nil || p.Ctx == nil || p.Ctx.Request == nil || p.Ctx.Request.Context().Err() != nil {
+		return false
+	}
+	if _, pinned, _ := GetChannelConstraints(p.Ctx).ResolvedPin(); pinned || ShouldSkipRetryAfterChannelAffinityFailure(p.Ctx) {
+		return false
+	}
+	probe := *p
+	probe.Ctx = p.Ctx.Copy()
+	probe.ExcludedChannelIDs = maps.Clone(p.ExcludedChannelIDs)
+	probe.preparedSelection = nil
+	probe.SetRetry(p.GetRetry())
+	probe.IncreaseRetry()
+	probe.ExcludeChannel(failedChannelID)
+	channel, group, err := CacheGetRandomSatisfiedChannel(&probe)
+	if err != nil || channel == nil {
+		return false
+	}
+	p.preparedSelection = &responsesChannelSelection{param: &probe, channel: channel, group: group}
+	return true
 }
 
 func (p *RetryParam) ExcludeChannel(channelID int) {
@@ -155,6 +187,17 @@ func (p *RetryParam) ResetRetryNextTry() {
 //	Retry=3: GroupB, priority1 (startRetryIndex=2, priorityRetry=1)
 //	         分组B, 优先级1
 func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, error) {
+	if selected := param.preparedSelection; selected != nil {
+		originalContext := param.Ctx
+		*param = *selected.param
+		param.Ctx = originalContext
+		for _, key := range []constant.ContextKey{constant.ContextKeyAutoGroup, constant.ContextKeyAutoGroupIndex, constant.ContextKeyAutoGroupRetryIndex} {
+			if value, exists := common.GetContextKey(selected.param.Ctx, key); exists {
+				common.SetContextKey(originalContext, key, value)
+			}
+		}
+		return selected.channel, selected.group, nil
+	}
 	var channel *model.Channel
 	var err error
 	selectGroup := param.TokenGroup

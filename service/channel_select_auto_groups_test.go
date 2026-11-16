@@ -216,3 +216,41 @@ func TestResponsesRetryWaitStopsWhenRetryAfterExceedsBudget(t *testing.T) {
 	assert.False(t, retried)
 	assert.Less(t, time.Since(started), 100*time.Millisecond)
 }
+
+func TestResponsesFailoverProbePreservesAutoGroupState(t *testing.T) {
+	for _, available := range []bool{false, true} {
+		t.Run(fmt.Sprintf("alternative=%v", available), func(t *testing.T) {
+			db := setupChannelSelectAutoGroupsTest(t)
+			common.RetryTimes = 3
+			const modelName = "responses-probe-auto-group-model"
+			createChannelSelectAutoGroupsChannel(t, db, 2251, "default", modelName)
+			if available {
+				createChannelSelectAutoGroupsChannel(t, db, 2252, "vip", modelName)
+			}
+			model.InitChannelCache()
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+			common.SetContextKey(c, constant.ContextKeyTokenAutoGroups, []string{"default", "vip"})
+			common.SetContextKey(c, constant.ContextKeyAutoGroupIndex, 0)
+			param := &RetryParam{Ctx: c, TokenGroup: "auto", ModelName: modelName, RequestPath: "/v1/responses", Retry: common.GetPointer(0), ExcludedChannelIDs: map[int]struct{}{999: {}}}
+			assert.Equal(t, available, param.PrepareResponsesFailover(2251))
+			assert.Equal(t, 0, param.GetRetry(), "probing must not consume the retry counter")
+			assert.Equal(t, 0, common.GetContextKeyInt(c, constant.ContextKeyAutoGroupIndex))
+			assert.Equal(t, map[int]struct{}{999: {}}, param.ExcludedChannelIDs)
+			if !available {
+				return
+			}
+			param.IncreaseRetry()
+			selected, group, err := CacheGetRandomSatisfiedChannel(param)
+			require.NoError(t, err)
+			require.NotNil(t, selected)
+			assert.Equal(t, 2252, selected.Id)
+			assert.Equal(t, "vip", group)
+			assert.Equal(t, "vip", common.GetContextKeyString(c, constant.ContextKeyAutoGroup))
+			assert.Equal(t, 1, common.GetContextKeyInt(c, constant.ContextKeyAutoGroupIndex))
+			assert.Contains(t, param.ExcludedChannelIDs, 2251)
+			assert.Nil(t, param.preparedSelection)
+		})
+	}
+}

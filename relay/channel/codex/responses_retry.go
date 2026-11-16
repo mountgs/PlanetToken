@@ -128,7 +128,7 @@ func (e *codexResponsesUpstreamError) toNewAPIError(retryAfter ...time.Duration)
 func responsesEventHasSemanticOutput(payload gjson.Result) bool {
 	eventType := strings.TrimSpace(payload.Get("type").String())
 	switch eventType {
-	case "response.created", "response.queued", "response.in_progress",
+	case "codex.rate_limits", "response.created", "response.queued", "response.in_progress",
 		"response.error", "response.failed", "error":
 		return false
 	case "response.completed":

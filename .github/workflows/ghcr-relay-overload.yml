@@ -1,0 +1,120 @@
+name: Publish relay overload fix
+
+on:
+  push:
+    branches: [codex/fix-relay-overload-20261116]
+    paths: [.github/workflows/ghcr-relay-overload.yml, controller/**, service/**, relay/**, deploy/nginx/**]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: ghcr-relay-overload
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: '1.4.4'
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+      - name: Verify affected backend behavior on Linux
+        run: |
+          mkdir -p web/dist
+          touch web/dist/index.html
+          go test -p 1 ./relay/channel/codex ./relay/channel/openai ./service ./relay -count=1 -timeout 5m
+          go test -p 1 ./controller -run 'TestResponsesHTTPOverloadFailover|TestShouldRetry|TestResponsesHTTPHealthCountsFinalResult' -count=1 -timeout 5m
+      - name: Full backend verification against production baseline
+        shell: bash
+        run: |
+          if go test -json -p 1 ./... -count=1 -timeout 6m > current-tests.json; then
+            echo "Full backend suite passed" >> "$GITHUB_STEP_SUMMARY"
+          else
+            git fetch --depth=1 origin 5cf1963ebffbfd5600087a52f0cc005a464c756e
+            mkdir -p .local-tests/production-baseline
+            git archive 5cf1963ebffbfd5600087a52f0cc005a464c756e | tar -x -C .local-tests/production-baseline
+            mkdir -p .local-tests/production-baseline/web/dist
+            touch .local-tests/production-baseline/web/dist/index.html
+            (cd .local-tests/production-baseline && go test -json -p 1 ./... -count=1 -timeout 6m) > baseline-tests.json || true
+            python3 - <<'PY'
+          import json, os
+          def failures(path):
+              result = set()
+              for line in open(path):
+                  try:
+                      event = json.loads(line)
+                  except ValueError:
+                      continue
+                  if event.get("Action") == "fail":
+                      result.add((event.get("Package", ""), event.get("Test", "")))
+              return result
+          current = failures("current-tests.json")
+          baseline = failures("baseline-tests.json")
+          assert current, "Tests failed without structured failure evidence"
+          added = current - baseline
+          assert not added, f"New full-suite regressions: {sorted(added)}"
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write(f"Full suite has {len(current)} existing failure records, all reproduced on unchanged production source. Affected regressions passed.\n")
+          print("FULL_SUITE_EXISTING_FAILURES_ONLY", len(current))
+          PY
+          fi
+      - name: Set image version
+        id: version
+        run: |
+          VERSION="relay-overload-20261116-${GITHUB_SHA::9}"
+          printf '%s' "$VERSION" > VERSION
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish production architecture
+        id: publish
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            VITE_SOURCE_URL=https://github.com/mountgs/PlanetToken/tree/${{ github.sha }}
+          tags: ghcr.io/mountgs/planet-token:${{ steps.version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/mountgs/PlanetToken
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=upstream-sync-amd64
+          cache-to: type=gha,mode=max,scope=upstream-sync-amd64
+          provenance: mode=max
+          sbom: true
+      - name: Record immutable deployment reference
+        env:
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          echo "ghcr.io/mountgs/planet-token@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
+          docker buildx imagetools inspect "ghcr.io/mountgs/planet-token@${DIGEST}"
+      - name: Export verified image for production
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          docker pull "ghcr.io/mountgs/planet-token@${DIGEST}"
+          docker tag "ghcr.io/mountgs/planet-token@${DIGEST}" "ghcr.io/mountgs/planet-token:${VERSION}"
+          docker save "ghcr.io/mountgs/planet-token:${VERSION}" | gzip -1 > image.tar.gz
+          sha256sum image.tar.gz > SHA256SUMS
+          printf '%s\n' "ghcr.io/mountgs/planet-token@${DIGEST}" > image-reference.txt
+          gh release create "$VERSION" image.tar.gz SHA256SUMS image-reference.txt --target "$GITHUB_SHA" --title "$VERSION" --notes "Verified overload failover and proxy timeout fix. Exact source: $GITHUB_SHA" --prerelease
