@@ -429,7 +429,7 @@
         "feat-codex-001"
       ],
       "status": "in-progress",
-      "evidence": "2026-11-18: SQLite 3.50.4, MySQL 8.0.46, PostgreSQL 15.18 and 95 frontend tests passed. WSL/browser create/edit/restart, 0.5 versus 0.9 charges, fixed/auto routing, model visibility and suffix update application passed with a simulated upstream. Full Windows baseline remains non-green. User authorized source publication and remote deployment; Linux release verification and production rehearsal/cutover pending."
+      "evidence": "2026-11-18: SQLite 3.50.4, MySQL 8.0.46, PostgreSQL 15.18 and 95 frontend tests passed. WSL/browser create/edit/restart, 0.5 versus 0.9 charges, fixed/auto routing, visibility and suffix updates passed with simulated upstream. Published code 448cc7739; Linux workflow 44261347830, protected production restore rehearsal with two startups, app-only cutover and 60-second health observation passed. Existing API key access works; 204 users, 126 tokens and 6 channels preserved. Running codex-model-groups-20261118-448cc7739. Full Windows baseline and real upstream OAuth/discovery limitations remain documented."
     }
   ]
 }
