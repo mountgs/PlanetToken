@@ -535,6 +535,9 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if err := channel.ValidateSettings(); err != nil {
 		return common.NewMessage("Invalid channel settings format: {{error}}", map[string]any{"error": err.Error()})
 	}
+	if rows := channel.GetOtherSettings().ModelGroups; len(rows) > 0 {
+		channel.SetModelGroupSummary(rows)
+	}
 	if channel.Type == constant.ChannelTypeTaskPlugin {
 		pluginKey := strings.TrimSpace(channel.GetSetting().TaskPluginKey)
 		if pluginKey == "" {
@@ -1109,6 +1112,16 @@ func UpdateChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	originModelGroups := originChannel.GetOtherSettings().ModelGroups
+	if len(originModelGroups) > 0 && len(channel.GetOtherSettings().ModelGroups) == 0 &&
+		(channel.Type == 0 || channel.Type == originChannel.Type) {
+		if _, provided := requestData["settings"]; provided ||
+			(channel.Models != "" && channel.Models != originChannel.Models) ||
+			(channel.Group != "" && channel.Group != originChannel.Group) {
+			common.ApiError(c, common.NewMessage("Edit model groups on the individual channel"))
+			return
+		}
+	}
 	originProxy := originChannel.GetSetting().Proxy
 	proxyChanged := false
 	_, settingProvided := requestData["setting"]
@@ -1237,6 +1250,10 @@ func UpdateChannel(c *gin.Context) {
 	}
 	if channel.Group != originChannel.Group {
 		changedFields = append(changedFields, "group")
+	}
+	if !slices.EqualFunc(originModelGroups, channel.GetOtherSettings().ModelGroups,
+		func(a, b dto.ChannelModelGroup) bool { return a.Group == b.Group && slices.Equal(a.Models, b.Models) }) {
+		changedFields = append(changedFields, "model_groups")
 	}
 	if channel.Type != originChannel.Type {
 		changedFields = append(changedFields, "type")

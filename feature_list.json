@@ -421,6 +421,15 @@
       ],
       "status": "in-progress",
       "evidence": "2026-11-16: Red regression reproduced codex.rate_limits metadata committing output before overload. Fixed nonsemantic classification, probe-and-retain alternative routing, fallback backoff, original 503 preservation and opaque-context protection. Eight HTTP scenarios and affected service/codex/openai/relay tests pass on Windows. Existing accounting suite failures reproduced on unchanged production 5cf1963eb; full Windows tests run and remain non-green due existing controller/HTTP2 failures. Production Nginx /v1/ and /openai/ read timeout 1860s applied after isolated 65.069s response test; nginx -t and health pass. Backend Linux baseline comparison, image build and rollout pending."
+    },
+    {
+      "id": "feat-codex-model-groups",
+      "name": "Codex 渠道按分组配置模型",
+      "dependencies": [
+        "feat-codex-001"
+      ],
+      "status": "in-progress",
+      "evidence": "2026-11-18: SQLite 3.50.4, MySQL 8.0.46, PostgreSQL 15.18 and 95 frontend tests passed. WSL/browser create/edit/restart, 0.5 versus 0.9 charges, fixed/auto routing, model visibility and suffix update application passed with a simulated upstream. Full Windows baseline remains non-green. User authorized source publication and remote deployment; Linux release verification and production rehearsal/cutover pending."
     }
   ]
 }

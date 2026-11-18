@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -42,28 +41,23 @@ func InitChannelCache() {
 			}
 		}
 	}
-	var abilities []*Ability
-	DB.Find(&abilities)
-	groups := make(map[string]bool)
-	for _, ability := range abilities {
-		groups[ability.Group] = true
-	}
 	newGroup2model2channels := make(map[string]map[string][]int)
-	for group := range groups {
-		newGroup2model2channels[group] = make(map[string][]int)
-	}
 	for _, channel := range channels {
 		if channel.Status != common.ChannelStatusEnabled {
-			continue // skip disabled channels
+			continue
 		}
-		groups := strings.SplitSeq(channel.Group, ",")
-		for group := range groups {
-			models := channel.GetModels()
-			for _, model := range models {
-				if _, ok := newGroup2model2channels[group][model]; !ok {
-					newGroup2model2channels[group][model] = make([]int, 0)
+		for _, row := range channel.ModelGroups() {
+			models := newGroup2model2channels[row.Group]
+			if models == nil {
+				models = make(map[string][]int)
+				newGroup2model2channels[row.Group] = models
+			}
+			seen := make(map[string]bool, len(row.Models))
+			for _, name := range row.Models {
+				if !seen[name] {
+					models[name] = append(models[name], channel.Id)
+					seen[name] = true
 				}
-				newGroup2model2channels[group][model] = append(newGroup2model2channels[group][model], channel.Id)
 			}
 		}
 	}

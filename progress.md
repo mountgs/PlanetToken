@@ -1,5 +1,13 @@
 # Session Progress Log
 
+## 2026-11-18 Codex channel model groups
+
+- Codex channel creation and editing support a list of existing groups and their models. Older channels expand the original model set across their existing groups. Channel settings and route records are saved together, and the database, route cache and model visibility use the same pairings. The channel keeps one OAuth credential and continues to use group pricing.
+- Upstream synchronization takes the final hyphen-delimited suffix from known models. It adds new models only when exactly one group matches, keeping unmatched and ambiguous names pending. For a channel with explicit model groups, edit model membership on the individual channel.
+- The route and synchronization regression passed against SQLite 3.50.4, MySQL 8.0.46 and PostgreSQL 15.18. Focused controller/model/service tests, 95 frontend tests, type checking, changed-file lint, the production frontend build and the independent RelayKit build passed. The full Windows initialization still fails on pre-existing SQLite file-handle cleanup, Responses accounting and HTTP/2 retry tests. Logs are in the sibling customer-ui-verification directory. No schema migration or production rollout.
+- WSL Ubuntu deployment on port 4318 passed browser create/edit/save/reopen and restart persistence. With a local simulated Codex upstream, identical model usage charged 1000 quota at 0.5 and 1800 at 0.9; exclusive premium models reject default tokens without charging, auto tokens select the matching group, and model visibility matches routing. Applying discovered models sends the unique -sol suffix to its existing group and leaves unknown suffixes pending. Real upstream OAuth and scheduled GitHub version discovery were not verified.
+- User authorized commit, push and remote deployment. Release workflow now verifies frontend types and model-group round trips, independent RelayKit build, affected Linux regressions and full-suite comparison against the currently deployed 313d34244 before publishing an image with exact source attribution. Production backup, isolated restore rehearsal and cutover are pending publication.
+
 ## 2026-10-30 Customer UI production release preparation
 
 - User explicitly authorized updating the existing remote server to the current image. This supersedes earlier no-push/no-deployment notes. Existing SSH key and deployment directory were recovered from prior records; credentials and host details remain outside Git.

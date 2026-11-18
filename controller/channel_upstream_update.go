@@ -29,6 +29,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
+	"gorm.io/gorm"
 )
 
 const (
@@ -502,14 +503,69 @@ func fetchAdvancedCustomUpstreamModelIDs(channel *model.Channel, baseURL string)
 }
 
 func updateChannelUpstreamModelSettings(channel *model.Channel, settings dto.ChannelOtherSettings, updateModels bool) error {
+	previousSettings := channel.OtherSettings
 	channel.SetOtherSettings(settings)
-	updates := map[string]any{
-		"settings": channel.OtherSettings,
-	}
+	updates := map[string]any{"settings": channel.OtherSettings}
 	if updateModels {
 		updates["models"] = channel.Models
+		updates["group"] = channel.Group
 	}
-	return model.DB.Model(&model.Channel{}).Where("id = ?", channel.Id).Updates(updates).Error
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		query := tx.Model(&model.Channel{}).Where("id = ?", channel.Id)
+		if previousSettings == "" {
+			query = query.Where("(settings = ? OR settings IS NULL)", previousSettings)
+		} else {
+			query = query.Where("settings = ?", previousSettings)
+		}
+		result := query.Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 && (updateModels || previousSettings != channel.OtherSettings) {
+			return common.NewMessage("The channel configuration changed. Try again.")
+		}
+		if updateModels {
+			return channel.UpdateAbilities(tx)
+		}
+		return nil
+	})
+}
+
+func syncChannelModelGroups(channel *model.Channel, settings *dto.ChannelOtherSettings, add, remove []string) (added []string) {
+	rows := channel.ModelGroups()
+	bySuffix := make(map[string]int)
+	for i, row := range rows {
+		for _, name := range row.Models {
+			if suffix := modelSyncSuffix(name); suffix != "" {
+				if previous, ok := bySuffix[suffix]; ok && previous != i {
+					bySuffix[suffix] = -1
+				} else {
+					bySuffix[suffix] = i
+				}
+			}
+		}
+	}
+	for _, name := range add {
+		if row, ok := bySuffix[modelSyncSuffix(name)]; ok && row >= 0 {
+			rows[row].Models = mergeModelNames(rows[row].Models, []string{name})
+			added = append(added, name)
+		}
+	}
+	if len(added) > 0 || len(remove) > 0 {
+		for i := range rows {
+			rows[i].Models = subtractModelNames(rows[i].Models, remove)
+		}
+		settings.ModelGroups = rows
+		channel.SetModelGroupSummary(rows)
+	}
+	return added
+}
+
+func modelSyncSuffix(name string) string {
+	if i := strings.LastIndexByte(name, '-'); i >= 0 && i < len(name)-1 {
+		return name[i+1:]
+	}
+	return ""
 }
 
 func checkAndPersistChannelUpstreamModelUpdates(
@@ -537,14 +593,21 @@ func checkAndPersistChannelUpstreamModelUpdates(
 	}
 
 	if allowAutoApply && settings.UpstreamModelUpdateAutoSyncEnabled && len(pendingAddModels) > 0 {
-		originModels := normalizeModelNames(channel.GetModels())
-		mergedModels := mergeModelNames(originModels, pendingAddModels)
-		if len(mergedModels) > len(originModels) {
-			channel.Models = strings.Join(mergedModels, ",")
-			autoAdded = len(mergedModels) - len(originModels)
-			modelsChanged = true
+		if channel.Type == constant.ChannelTypeCodex || len(settings.ModelGroups) > 0 {
+			added := syncChannelModelGroups(channel, settings, pendingAddModels, nil)
+			autoAdded = len(added)
+			modelsChanged = autoAdded > 0
+			settings.UpstreamModelUpdateLastDetectedModels = subtractModelNames(pendingAddModels, added)
+		} else {
+			originModels := normalizeModelNames(channel.GetModels())
+			mergedModels := mergeModelNames(originModels, pendingAddModels)
+			if len(mergedModels) > len(originModels) {
+				channel.Models = strings.Join(mergedModels, ",")
+				autoAdded = len(mergedModels) - len(originModels)
+				modelsChanged = true
+			}
+			settings.UpstreamModelUpdateLastDetectedModels = []string{}
 		}
-		settings.UpstreamModelUpdateLastDetectedModels = []string{}
 	} else {
 		settings.UpstreamModelUpdateLastDetectedModels = pendingAddModels
 	}
@@ -552,11 +615,6 @@ func checkAndPersistChannelUpstreamModelUpdates(
 
 	if err = updateChannelUpstreamModelSettings(channel, *settings, modelsChanged); err != nil {
 		return false, autoAdded, err
-	}
-	if modelsChanged {
-		if err = channel.UpdateAbilities(nil); err != nil {
-			return true, autoAdded, err
-		}
 	}
 	return modelsChanged, autoAdded, nil
 }
@@ -994,11 +1052,16 @@ func applyChannelUpstreamModelUpdates(
 	removeModels := intersectModelNames(removeModelsInput, pendingRemoveModels)
 	removeModels = subtractModelNames(removeModels, addModels)
 
-	originModels := normalizeModelNames(channel.GetModels())
-	nextModels := applySelectedModelChanges(originModels, addModels, removeModels)
-	modelsChanged = !slices.Equal(originModels, nextModels)
-	if modelsChanged {
-		channel.Models = strings.Join(nextModels, ",")
+	if channel.Type == constant.ChannelTypeCodex || len(settings.ModelGroups) > 0 {
+		addModels = syncChannelModelGroups(channel, &settings, addModels, removeModels)
+		modelsChanged = len(addModels) > 0 || len(removeModels) > 0
+	} else {
+		originModels := normalizeModelNames(channel.GetModels())
+		nextModels := applySelectedModelChanges(originModels, addModels, removeModels)
+		modelsChanged = !slices.Equal(originModels, nextModels)
+		if modelsChanged {
+			channel.Models = strings.Join(nextModels, ",")
+		}
 	}
 
 	settings.UpstreamModelUpdateIgnoredModels = mergeModelNames(settings.UpstreamModelUpdateIgnoredModels, ignoreModels)
@@ -1015,11 +1078,6 @@ func applyChannelUpstreamModelUpdates(
 		return nil, nil, nil, nil, false, err
 	}
 
-	if modelsChanged {
-		if err := channel.UpdateAbilities(nil); err != nil {
-			return addModels, removeModels, remainingModels, remainingRemoveModels, true, err
-		}
-	}
 	return addModels, removeModels, remainingModels, remainingRemoveModels, modelsChanged, nil
 }
 

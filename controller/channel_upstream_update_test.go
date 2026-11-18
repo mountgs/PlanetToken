@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -610,4 +611,91 @@ func TestDetectAllChannelUpstreamModelUpdatesRejectsExistingActiveTask(t *testin
 	require.Equal(t, http.StatusConflict, recorder.Code)
 	require.Contains(t, recorder.Body.String(), existing.TaskID)
 	require.Contains(t, recorder.Body.String(), "A model update task is already running or queued")
+}
+
+func TestCodexModelGroupsRouteAndSync(t *testing.T) {
+	for _, dialect := range []struct{ kind, env string }{
+		{"sqlite", ""}, {"mysql", "TEST_MYSQL_DSN"}, {"postgres", "TEST_POSTGRES_DSN"},
+	} {
+		t.Run(dialect.kind, func(t *testing.T) {
+			dsn := ""
+			if dialect.env != "" {
+				dsn = os.Getenv(dialect.env)
+				if dsn == "" {
+					t.Skipf("%s not configured", dialect.env)
+				}
+			}
+			testCodexModelGroupsRouteAndSync(t, dialect.kind, dsn)
+		})
+	}
+}
+
+func testCodexModelGroupsRouteAndSync(t *testing.T, kind, dsn string) {
+	t.Helper()
+	db := model.DB
+	if kind == "sqlite" {
+		previousDB, previousLogDB := model.DB, model.LOG_DB
+		previousMemory, previousRedis := common.MemoryCacheEnabled, common.RedisEnabled
+		previousMainType, previousLogType := common.MainDatabaseType(), common.LogDatabaseType()
+		t.Cleanup(func() {
+			model.DB, model.LOG_DB = previousDB, previousLogDB
+			common.MemoryCacheEnabled, common.RedisEnabled = previousMemory, previousRedis
+			common.SetDatabaseTypes(previousMainType, previousLogType)
+		})
+		db = setupModelListControllerTestDB(t)
+		var version string
+		require.NoError(t, db.Raw("SELECT sqlite_version()").Scan(&version).Error)
+		t.Logf("database version: %s", version)
+	} else {
+		db = modelManagementDB(t, kind, dsn)
+	}
+	channel := model.Channel{
+		Name: "Codex", Type: constant.ChannelTypeCodex, Status: common.ChannelStatusEnabled,
+		Group: "default,premium", Models: "gpt-6.1-sol,gpt-6.1-nano,gpt-6.1-mini",
+		Key: "{\"access_token\":\"test\",\"account_id\":\"test\"}",
+	}
+	require.NoError(t, channel.Insert())
+	assertRoutes := func(group, name string, expected bool) {
+		t.Helper()
+		common.MemoryCacheEnabled = false
+		require.Equal(t, expected, model.IsChannelEnabledForGroupModel(group, name, channel.Id), "database %s/%s", group, name)
+		common.MemoryCacheEnabled = true
+		require.Equal(t, expected, model.IsChannelEnabledForGroupModel(group, name, channel.Id), "cache %s/%s", group, name)
+	}
+	common.MemoryCacheEnabled = true
+	model.InitChannelCache()
+	assertRoutes("default", "gpt-6.1-sol", true)
+	assertRoutes("premium", "gpt-6.1-sol", true)
+
+	channel.SetOtherSettings(dto.ChannelOtherSettings{
+		ModelGroups: []dto.ChannelModelGroup{
+			{Group: "default", Models: []string{"gpt-6.1-nano", "gpt-6.1-mini", "gpt-6.0-mini"}},
+			{Group: "premium", Models: []string{"gpt-6.1-sol", "gpt-6.1-mini"}},
+		},
+		UpstreamModelUpdateLastDetectedModels: []string{"gpt-6.2-sol", "gpt-6.2-mini", "gpt-6.2-astra", "nosuffix"},
+	})
+	require.NoError(t, validateChannel(&channel, false))
+	require.NoError(t, channel.Update())
+	model.InitChannelCache()
+	assertRoutes("default", "gpt-6.1-sol", false)
+	assertRoutes("premium", "gpt-6.1-sol", true)
+	assertRoutes("default", "gpt-6.1-nano", true)
+	assertRoutes("premium", "gpt-6.1-nano", false)
+
+	added, _, pending, _, changed, err := applyChannelUpstreamModelUpdates(
+		&channel, []string{"gpt-6.2-sol", "gpt-6.2-mini", "gpt-6.2-astra", "nosuffix"}, nil, nil,
+	)
+	require.NoError(t, err)
+	assert.True(t, changed)
+	assert.Equal(t, []string{"gpt-6.2-sol"}, added)
+	assert.ElementsMatch(t, []string{"gpt-6.2-mini", "gpt-6.2-astra", "nosuffix"}, pending)
+	model.InitChannelCache()
+	assertRoutes("premium", "gpt-6.2-sol", true)
+	assertRoutes("default", "gpt-6.2-sol", false)
+	assertRoutes("default", "gpt-6.2-mini", false)
+	assertRoutes("premium", "gpt-6.2-mini", false)
+	var saved model.Channel
+	require.NoError(t, db.First(&saved, channel.Id).Error)
+	assert.Contains(t, saved.GetModels(), "gpt-6.2-sol")
+	assert.Equal(t, channel.Key, saved.Key)
 }

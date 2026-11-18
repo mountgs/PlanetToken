@@ -1,5 +1,12 @@
 # Session Handoff
 
+## 2026-11-18 Codex channel model groups
+
+- Codex channel creation and editing support a list of existing groups and their models. Older channels expand the original model set across their existing groups. Channel settings and route records are saved together, and the database, route cache and model visibility use the same pairings. The channel keeps one OAuth credential and continues to use group pricing.
+- Upstream synchronization takes the final hyphen-delimited suffix from known models. It adds new models only when exactly one group matches, keeping unmatched and ambiguous names pending. For a channel with explicit model groups, edit model membership on the individual channel.
+- The route and synchronization regression passed against SQLite 3.50.4, MySQL 8.0.46 and PostgreSQL 15.18. Focused controller/model/service tests, 95 frontend tests, type checking, changed-file lint, the production frontend build and the independent RelayKit build passed. The full Windows initialization still fails on pre-existing SQLite file-handle cleanup, Responses accounting and HTTP/2 retry tests. Logs are in the sibling customer-ui-verification directory. No schema migration or production rollout.
+- WSL/browser end-to-end checks passed create/edit persistence, group-specific charges, premium-only model rejection without charge, auto routing, model visibility and suffix-based update application with a simulated upstream. The user has now authorized commit/push and the existing server update. Publish the verified image, protect existing data/config/image, restore the production snapshot on an isolated network and verify two startups before replacing only the app. Real Codex OAuth and scheduled version discovery remain unverified.
+
 ## Active release — 2026-10-30
 
 - User authorized updating the existing remote server; this supersedes older no-deployment notes below. Recovered working SSH connection from prior deployment assets, no new credentials needed. Use PlanetToken-customer-ui and codex/customer-ui-rightapi only.

@@ -50,7 +50,11 @@ import {
   useCallback,
   useRef,
 } from 'react'
-import { type SubmitErrorHandler, useForm } from 'react-hook-form'
+import {
+  type SubmitErrorHandler,
+  useFieldArray,
+  useForm,
+} from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -583,6 +587,28 @@ export function ChannelMutateDrawer({
   const keyMode = formValues.key_mode
   const currentGroups = formValues.group
   const currentType = formValues.type
+  const usesModelGroups = currentType === 57
+  const {
+    fields: modelGroupFields,
+    append: appendModelGroup,
+    remove: removeModelGroup,
+  } = useFieldArray({
+    control: form.control,
+    name: 'model_groups',
+  })
+  const currentModelGroups = formValues.model_groups ?? []
+  const syncModelGroupSummary = useCallback(() => {
+    const rows = form.getValues('model_groups') ?? []
+    form.setValue(
+      'models',
+      formatModelsArray(rows.flatMap((row) => row.models)),
+      { shouldDirty: true }
+    )
+    form.setValue('group', rows.map((row) => row.group).filter(Boolean), {
+      shouldDirty: true,
+    })
+  }, [form])
+
   const baseUrlPlaceholder = [CHANNEL_TYPE_VLLM, CHANNEL_TYPE_SGLANG].includes(
     currentType
   )
@@ -1189,10 +1215,31 @@ export function ChannelMutateDrawer({
       const finalModels = merge
         ? formatModelsArray([...currentModelsArray, ...newModels])
         : formatModelsArray(newModels)
-      form.setValue('models', finalModels)
+      if (usesModelGroups) {
+        const rows = form.getValues('model_groups') ?? []
+        if (rows.length === 1) {
+          form.setValue(
+            'model_groups.0.models',
+            parseModelsString(finalModels),
+            { shouldDirty: true }
+          )
+        } else {
+          const selected = new Set(parseModelsString(finalModels))
+          for (const [index, row] of rows.entries()) {
+            form.setValue(
+              `model_groups.${index}.models`,
+              row.models.filter((name) => selected.has(name)),
+              { shouldDirty: true }
+            )
+          }
+        }
+        syncModelGroupSummary()
+      } else {
+        form.setValue('models', finalModels)
+      }
       return newModels.length
     },
-    [currentModelsArray, form]
+    [currentModelsArray, form, syncModelGroupSummary, usesModelGroups]
   )
 
   // Ordinary edits use the saved channel. Advanced Custom retains its existing
@@ -1284,9 +1331,9 @@ export function ChannelMutateDrawer({
   }, [basicModels, updateModels, t])
 
   const handleClearModels = useCallback(() => {
-    form.setValue('models', '')
+    updateModels([])
     toast.success(t('Cleared all models'))
-  }, [form, t])
+  }, [updateModels, t])
 
   const handleCopyModels = useCallback(async () => {
     const models = form.getValues('models')
@@ -1326,9 +1373,9 @@ export function ChannelMutateDrawer({
   // Handle model selection change from MultiSelect
   const handleModelsChange = useCallback(
     (selected: string[]) => {
-      form.setValue('models', selected.join(','))
+      updateModels(selected)
     },
-    [form]
+    [updateModels]
   )
 
   const taskPluginExtensionOptions = useMemo(
@@ -1400,6 +1447,9 @@ export function ChannelMutateDrawer({
   // only its own additions and removals are undone.
   const syncModelsWithMapping = useCallback(
     (mapping: string) => {
+      if (usesModelGroups && form.getValues('model_groups')?.length !== 1) {
+        return
+      }
       const aliasSet = new Set<string>()
       const targetSet = new Set<string>()
       let parsed: unknown
@@ -1430,9 +1480,9 @@ export function ChannelMutateDrawer({
       }
       syncedAliasesRef.current = aliasSet
       syncedTargetsRef.current = targetSet
-      form.setValue('models', formatModelsArray(models))
+      updateModels(models)
     },
-    [form]
+    [form, updateModels, usesModelGroups]
   )
 
   const applyMappingPairs = useCallback(
@@ -1697,6 +1747,7 @@ export function ChannelMutateDrawer({
         )
 
         const shouldPromptMissing =
+          (data.type !== 57 || data.model_groups?.length === 1) &&
           missingModels.length > 0 &&
           hasModelConfigChanged(
             normalizedModels,
@@ -1716,6 +1767,14 @@ export function ChannelMutateDrawer({
             ]
             data.models = formatModelsArray(updatedModels)
             form.setValue('models', data.models)
+            if (data.type === 57 && data.model_groups?.length === 1) {
+              data.model_groups = [
+                { ...data.model_groups[0], models: updatedModels },
+              ]
+              form.setValue('model_groups.0.models', updatedModels, {
+                shouldDirty: true,
+              })
+            }
           }
         }
       }
@@ -2517,44 +2576,45 @@ export function ChannelMutateDrawer({
                 </AlertDescription>
               </Alert>
             )}
-            {modelMappingGuardrail.missingSourceModels.length > 0 && (
-              <Alert className='border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-50'>
-                <AlertDescription className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
-                  <span>
-                    {t('Add')}{' '}
-                    {formatModelNames(
-                      modelMappingGuardrail.missingSourceModels
-                    )}{' '}
-                    {t(
-                      'to the Models list so users can use them before the mapping sends traffic upstream.'
-                    )}
-                  </span>
-                  <div className='flex shrink-0 flex-wrap gap-2'>
-                    <Button
-                      type='button'
-                      variant='outline'
-                      size='sm'
-                      onClick={() => {
-                        updateModels([
-                          ...currentModelsArray,
-                          ...modelMappingGuardrail.missingSourceModels,
-                        ])
-                      }}
-                    >
-                      {t('Add missing models')}
-                    </Button>
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='sm'
-                      onClick={() => setConfigurationSection('connection')}
-                    >
-                      {t('View models')}
-                    </Button>
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
+            {(!usesModelGroups || currentModelGroups.length === 1) &&
+              modelMappingGuardrail.missingSourceModels.length > 0 && (
+                <Alert className='border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-50'>
+                  <AlertDescription className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+                    <span>
+                      {t('Add')}{' '}
+                      {formatModelNames(
+                        modelMappingGuardrail.missingSourceModels
+                      )}{' '}
+                      {t(
+                        'to the Models list so users can use them before the mapping sends traffic upstream.'
+                      )}
+                    </span>
+                    <div className='flex shrink-0 flex-wrap gap-2'>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        onClick={() => {
+                          updateModels([
+                            ...currentModelsArray,
+                            ...modelMappingGuardrail.missingSourceModels,
+                          ])
+                        }}
+                      >
+                        {t('Add missing models')}
+                      </Button>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
+                        onClick={() => setConfigurationSection('connection')}
+                      >
+                        {t('View models')}
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
             <FormMessage />
           </FormItem>
         )}
@@ -3184,18 +3244,146 @@ export function ChannelMutateDrawer({
                       {t('Configure Models')}
                     </Button>
                   </div>
-                  <FormControl>
-                    <MultiSelect
-                      options={modelOptions}
-                      selected={currentModelsArray}
-                      onChange={handleModelsChange}
-                      placeholder={t('Select models or add custom ones')}
-                      allowCreate
-                      createLabel='Add custom model "{{value}}"'
-                      maxVisibleChips={8}
-                      copyChipOnClick
-                    />
-                  </FormControl>
+                  {usesModelGroups ? (
+                    <div className='space-y-3'>
+                      {modelGroupFields.map((row, index) => {
+                        const value = currentModelGroups[index] ?? row
+                        const selectedGroups = new Set(
+                          currentModelGroups.map((item) => item.group)
+                        )
+                        const groupChoices = groupOptions.filter(
+                          (option) =>
+                            option.value === value.group ||
+                            !selectedGroups.has(option.value)
+                        )
+                        const modelInputId = `channel-group-models-${row.id}`
+                        return (
+                          <div
+                            key={row.id}
+                            className='border-border/60 space-y-3 rounded-lg border p-3'
+                          >
+                            <div className='flex items-center justify-between gap-2'>
+                              <Select
+                                value={value.group || null}
+                                items={groupChoices}
+                                onValueChange={(group) => {
+                                  form.setValue(
+                                    `model_groups.${index}.group`,
+                                    group ?? '',
+                                    { shouldDirty: true }
+                                  )
+                                  syncModelGroupSummary()
+                                }}
+                              >
+                                <SelectTrigger
+                                  aria-label={t('Group')}
+                                  className='w-full min-w-0'
+                                >
+                                  <SelectValue
+                                    placeholder={t('Select group')}
+                                  />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {groupChoices.map((group) => (
+                                    <SelectItem
+                                      key={group.value}
+                                      value={group.value}
+                                    >
+                                      {group.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                type='button'
+                                variant='ghost'
+                                size='icon'
+                                aria-label={t('Remove group')}
+                                disabled={modelGroupFields.length < 2}
+                                onClick={() => {
+                                  removeModelGroup(index)
+                                  syncModelGroupSummary()
+                                }}
+                              >
+                                <Trash2 aria-hidden='true' />
+                              </Button>
+                            </div>
+                            <label htmlFor={modelInputId} className='sr-only'>
+                              {t('Models')}
+                            </label>
+                            <MultiSelect
+                              id={modelInputId}
+                              options={[
+                                ...modelOptions,
+                                ...upstreamModelList
+                                  .filter(
+                                    (name) =>
+                                      !modelOptions.some(
+                                        (option) => option.value === name
+                                      )
+                                  )
+                                  .map((name) => ({
+                                    value: name,
+                                    label: name,
+                                  })),
+                              ]}
+                              selected={value.models}
+                              onChange={(models) => {
+                                form.setValue(
+                                  `model_groups.${index}.models`,
+                                  models,
+                                  { shouldDirty: true }
+                                )
+                                syncModelGroupSummary()
+                              }}
+                              placeholder={t(
+                                'Select models or add custom ones'
+                              )}
+                              allowCreate
+                              maxVisibleChips={8}
+                              copyChipOnClick
+                            />
+                          </div>
+                        )
+                      })}
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        disabled={
+                          !groupOptions.some(
+                            (option) =>
+                              !currentModelGroups.some(
+                                (row) => row.group === option.value
+                              )
+                          ) || currentModelGroups.some((row) => !row.group)
+                        }
+                        onClick={() =>
+                          appendModelGroup({ group: '', models: [] })
+                        }
+                      >
+                        {t('Add group')}
+                      </Button>
+                      {form.formState.errors.model_groups?.message && (
+                        <p role='alert' className='text-destructive text-sm'>
+                          {t(form.formState.errors.model_groups.message)}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <FormControl>
+                      <MultiSelect
+                        options={modelOptions}
+                        selected={currentModelsArray}
+                        onChange={handleModelsChange}
+                        placeholder={t('Select models or add custom ones')}
+                        allowCreate
+                        createLabel='Add custom model "{{value}}"'
+                        maxVisibleChips={8}
+                        copyChipOnClick
+                      />
+                    </FormControl>
+                  )}
                   <div className='text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs'>
                     <Route className='size-3.5 shrink-0' aria-hidden='true' />
                     {mappingCount > 0 && (
@@ -3353,21 +3541,24 @@ export function ChannelMutateDrawer({
                 {discovery.status === 'success' &&
                   discovery.models.length > 0 && (
                     <div className='space-y-3'>
-                      <UpstreamModelSelection
-                        models={discovery.models}
-                        selected={currentModelsArray}
-                        existingModels={
-                          isEditing
-                            ? initialModelsRef.current
-                            : currentModelsArray
-                        }
-                        onChange={handleModelsChange}
-                        showChanges={isEditing}
-                        redirectModels={redirectModelList}
-                        redirectSourceModels={redirectModelKeyList}
-                        onRedirectModel={handleFetchedRedirect}
-                        aliases={upstreamAliases}
-                      />
+                      {(!usesModelGroups ||
+                        currentModelGroups.length === 1) && (
+                        <UpstreamModelSelection
+                          models={discovery.models}
+                          selected={currentModelsArray}
+                          existingModels={
+                            isEditing
+                              ? initialModelsRef.current
+                              : currentModelsArray
+                          }
+                          onChange={handleModelsChange}
+                          showChanges={isEditing}
+                          redirectModels={redirectModelList}
+                          redirectSourceModels={redirectModelKeyList}
+                          onRedirectModel={handleFetchedRedirect}
+                          aliases={upstreamAliases}
+                        />
+                      )}
                       <div className='flex flex-wrap items-center justify-between gap-2'>
                         <p className='text-muted-foreground text-xs'>
                           {t(
@@ -3443,7 +3634,10 @@ export function ChannelMutateDrawer({
                   variant='outline'
                   size='sm'
                   onClick={handleFillRelatedModels}
-                  disabled={!basicModels.length}
+                  disabled={
+                    !basicModels.length ||
+                    (usesModelGroups && currentModelGroups.length !== 1)
+                  }
                 >
                   <FileText className='mr-2 h-4 w-4' aria-hidden='true' />
                   {t('Fill Related Models')}
@@ -3490,56 +3684,59 @@ export function ChannelMutateDrawer({
                   {t('Clear All')}
                 </Button>
               </div>
-              {prefillGroups.length > 0 && (
-                <div className='flex flex-wrap items-center gap-2'>
-                  <span className='text-muted-foreground text-xs'>
-                    {t('Preset groups')}:
-                  </span>
-                  {prefillGroups.map((group) => (
-                    <Button
-                      key={group.id}
-                      type='button'
-                      variant='secondary'
-                      size='sm'
-                      onClick={() => handleAddPrefillGroup(group)}
-                    >
-                      {group.name}
-                    </Button>
-                  ))}
-                </div>
-              )}
+              {prefillGroups.length > 0 &&
+                (!usesModelGroups || currentModelGroups.length === 1) && (
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <span className='text-muted-foreground text-xs'>
+                      {t('Preset groups')}:
+                    </span>
+                    {prefillGroups.map((group) => (
+                      <Button
+                        key={group.id}
+                        type='button'
+                        variant='secondary'
+                        size='sm'
+                        onClick={() => handleAddPrefillGroup(group)}
+                      >
+                        {group.name}
+                      </Button>
+                    ))}
+                  </div>
+                )}
             </div>
           </div>
 
-          <div className='border-border/60 rounded-lg border p-4'>
-            <FormField
-              control={form.control}
-              name='group'
-              render={({ field }) => (
-                <FormItem className='space-y-3'>
-                  <div className='space-y-1'>
-                    <FormLabel required>{t('Groups')}</FormLabel>
-                    <FormDescription>
-                      {t(FIELD_DESCRIPTIONS.GROUP)}
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    {isLoadingGroups ? (
-                      <Skeleton className='h-10 w-full' />
-                    ) : (
-                      <MultiSelect
-                        options={groupOptions}
-                        selected={field.value}
-                        onChange={field.onChange}
-                        placeholder={t(FIELD_PLACEHOLDERS.GROUP)}
-                      />
-                    )}
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
+          {!usesModelGroups && (
+            <div className='border-border/60 rounded-lg border p-4'>
+              <FormField
+                control={form.control}
+                name='group'
+                render={({ field }) => (
+                  <FormItem className='space-y-3'>
+                    <div className='space-y-1'>
+                      <FormLabel required>{t('Groups')}</FormLabel>
+                      <FormDescription>
+                        {t(FIELD_DESCRIPTIONS.GROUP)}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      {isLoadingGroups ? (
+                        <Skeleton className='h-10 w-full' />
+                      ) : (
+                        <MultiSelect
+                          options={groupOptions}
+                          selected={field.value}
+                          onChange={field.onChange}
+                          placeholder={t(FIELD_PLACEHOLDERS.GROUP)}
+                        />
+                      )}
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          )}
         </div>
       </ChannelModelsSection>
     </div>

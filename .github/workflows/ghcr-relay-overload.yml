@@ -1,9 +1,9 @@
-name: Publish relay overload fix
+name: Publish Codex model groups
 
 on:
   push:
     branches: [codex/fix-relay-overload-20261116]
-    paths: [.github/workflows/ghcr-relay-overload.yml, controller/**, service/**, relay/**, deploy/nginx/**]
+    paths: [.github/workflows/ghcr-relay-overload.yml, controller/**, model/**, service/**, relay/**, relaykit/**, web/**, deploy/nginx/**]
   workflow_dispatch:
 
 permissions:
@@ -29,21 +29,30 @@ jobs:
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: go.mod
+      - name: Verify channel frontend
+        working-directory: web
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+          bun run test src/features/channels/lib/__tests__/model-groups.test.ts
+      - name: Verify independent RelayKit build
+        working-directory: relaykit
+        run: GOWORK=off go build ./...
       - name: Verify affected backend behavior on Linux
         run: |
           mkdir -p web/dist
           touch web/dist/index.html
           go test -p 1 ./relay/channel/codex ./relay/channel/openai ./service ./relay -count=1 -timeout 5m
-          go test -p 1 ./controller -run 'TestResponsesHTTPOverloadFailover|TestShouldRetry|TestResponsesHTTPHealthCountsFinalResult' -count=1 -timeout 5m
+          go test -p 1 ./controller -run 'TestCodexModelGroupsRouteAndSync|TestResponsesHTTPOverloadFailover|TestShouldRetry|TestResponsesHTTPHealthCountsFinalResult' -count=1 -timeout 5m
       - name: Full backend verification against production baseline
         shell: bash
         run: |
           if go test -json -p 1 ./... -count=1 -timeout 6m > current-tests.json; then
             echo "Full backend suite passed" >> "$GITHUB_STEP_SUMMARY"
           else
-            git fetch --depth=1 origin 5cf1963ebffbfd5600087a52f0cc005a464c756e
+            git fetch --depth=1 origin 313d342447c1f64516c36c6e6518d5e6028860bd
             mkdir -p .local-tests/production-baseline
-            git archive 5cf1963ebffbfd5600087a52f0cc005a464c756e | tar -x -C .local-tests/production-baseline
+            git archive 313d342447c1f64516c36c6e6518d5e6028860bd | tar -x -C .local-tests/production-baseline
             mkdir -p .local-tests/production-baseline/web/dist
             touch .local-tests/production-baseline/web/dist/index.html
             (cd .local-tests/production-baseline && go test -json -p 1 ./... -count=1 -timeout 6m) > baseline-tests.json || true
@@ -72,7 +81,7 @@ jobs:
       - name: Set image version
         id: version
         run: |
-          VERSION="relay-overload-20261116-${GITHUB_SHA::9}"
+          VERSION="codex-model-groups-20261118-${GITHUB_SHA::9}"
           printf '%s' "$VERSION" > VERSION
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Set up Docker Buildx
@@ -117,4 +126,4 @@ jobs:
           docker save "ghcr.io/mountgs/planet-token:${VERSION}" | gzip -1 > image.tar.gz
           sha256sum image.tar.gz > SHA256SUMS
           printf '%s\n' "ghcr.io/mountgs/planet-token@${DIGEST}" > image-reference.txt
-          gh release create "$VERSION" image.tar.gz SHA256SUMS image-reference.txt --target "$GITHUB_SHA" --title "$VERSION" --notes "Verified overload failover and proxy timeout fix. Exact source: $GITHUB_SHA" --prerelease
+          gh release create "$VERSION" image.tar.gz SHA256SUMS image-reference.txt --target "$GITHUB_SHA" --title "$VERSION" --notes "Codex channel model groups and suffix-based upstream synchronization. Exact source: $GITHUB_SHA" --prerelease

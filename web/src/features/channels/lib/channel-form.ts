@@ -202,6 +202,10 @@ function addRequiredIssue(
   })
 }
 
+const channelModelGroupsSchema = z
+  .array(z.object({ group: z.string(), models: z.array(z.string()) }))
+  .optional()
+
 export const channelFormSchema = z
   .object({
     name: z.string().min(1, ERROR_MESSAGES.REQUIRED_NAME),
@@ -213,6 +217,7 @@ export const channelFormSchema = z
     openai_organization: z.string().optional(),
     models: z.string().min(1, ERROR_MESSAGES.REQUIRED_MODELS),
     group: z.array(z.string()).min(1, ERROR_MESSAGES.REQUIRED_GROUP),
+    model_groups: channelModelGroupsSchema,
     model_mapping: z
       .string()
       .optional()
@@ -297,6 +302,25 @@ export const channelFormSchema = z
     upstream_model_update_ignored_models: z.string().optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.type === 57 && data.model_groups) {
+      const rows = data.model_groups
+      if (
+        rows.some((row) => !row.group || row.models.length === 0) ||
+        rows.length === 0
+      ) {
+        addRequiredIssue(
+          ctx,
+          'model_groups',
+          'Select a group and models for each row'
+        )
+      } else if (new Set(rows.map((row) => row.group)).size !== rows.length) {
+        addRequiredIssue(
+          ctx,
+          'model_groups',
+          'Each group can only be added once'
+        )
+      }
+    }
     if (
       [
         3,
@@ -439,6 +463,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   openai_organization: '',
   models: '',
   group: ['default'],
+  model_groups: [{ group: 'default', models: [] }],
   model_mapping: '',
   priority: 0,
   weight: 0,
@@ -565,10 +590,14 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
   let advancedCustom = ''
+  const modelGroupsSchema = channelModelGroupsSchema
+  let modelGroups: ChannelFormValues['model_groups']
 
   if (channel.settings) {
     try {
       const parsed = JSON.parse(channel.settings)
+      const rows = modelGroupsSchema.safeParse(parsed.model_groups)
+      if (rows.success && rows.data?.length) modelGroups = rows.data
       vertexKeyType = parsed.vertex_key_type || 'json'
       vertexProjectId = parsed.vertex_project_id || ''
       azureResponsesVersion = parsed.azure_responses_version || ''
@@ -610,6 +639,12 @@ export function transformChannelToFormDefaults(
     openai_organization: channel.openai_organization || '',
     models: channel.models || '',
     group: parseGroups(channel.group || 'default'),
+    model_groups:
+      modelGroups ??
+      parseGroups(channel.group || 'default').map((group) => ({
+        group,
+        models: parseModels(channel.models || ''),
+      })),
     model_mapping: channel.model_mapping || '',
     priority: channel.priority || 0,
     weight: channel.weight || 0,
@@ -711,6 +746,10 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
       // eslint-disable-next-line no-console
       console.error('Failed to parse existing settings:', error)
     }
+  }
+
+  if (formData.type === 57 && formData.model_groups?.length) {
+    settingsObj.model_groups = formData.model_groups
   }
 
   // Add vertex_key_type for Vertex AI channels (type 41)
